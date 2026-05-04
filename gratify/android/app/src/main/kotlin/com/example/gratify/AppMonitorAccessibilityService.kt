@@ -12,24 +12,38 @@ class AppMonitorAccessibilityService : AccessibilityService() {
     // Cache of packages that have a launcher intent (user-launchable apps)
     private val launchableCache = mutableSetOf<String>()
     private var cacheFilled = false
-    // Tracks the last package that came to the foreground. Updated for every package,
-    // including non-launchable ones (systemui, recents overlay, etc.), so that navigating
-    // through the recents screen resets it correctly instead of staying stuck on the
-    // restricted app's package and skipping all future checks.
-    private var lastForegroundPkg: String? = null
+
+    // Last user-launchable package that came to the foreground.
+    // Null means "unknown / came from home or recents" → next open is a fresh launch.
+    private var lastLaunchablePkg: String? = null
+
+    // Packages that represent the home screen or recents overlay.
+    // When these fire we reset lastLaunchablePkg so the next app open is treated
+    // as a fresh launch (fixes the recents re-open suppression bug).
+    // All other non-launchable system events (keyboard, dialogs, story transitions, etc.)
+    // are ignored without touching lastLaunchablePkg so in-app navigation stays suppressed.
+    private val homeAndRecentsPackages: Set<String> by lazy {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        packageManager.queryIntentActivities(homeIntent, 0)
+            .map { it.activityInfo.packageName }
+            .toSet() + setOf("com.android.systemui")
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
+        if (pkg == packageName) return
 
-        if (pkg == packageName) return      // Gratify itself — don't update lastForegroundPkg
+        if (homeAndRecentsPackages.contains(pkg)) {
+            lastLaunchablePkg = null   // user went home/recents — next open is fresh
+            return
+        }
 
-        // Update for all packages, including non-launchable system packages.
-        val sameApp = pkg == lastForegroundPkg
-        lastForegroundPkg = pkg
+        if (!isLaunchableApp(pkg)) return   // other system events — ignore entirely
 
-        if (!isLaunchableApp(pkg)) return   // system dialogs, keyboard, status bar, etc.
-        if (sameApp) return                 // in-app navigation (comments, sub-screens, etc.)
+        val sameApp = pkg == lastLaunchablePkg
+        lastLaunchablePkg = pkg
+        if (sameApp) return                 // in-app navigation (comments, stories, sub-screens)
 
         val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         if (!flutterPrefs.getBoolean("flutter.monitoring_enabled", true)) return

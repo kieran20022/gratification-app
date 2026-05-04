@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/restricted_app.dart';
+import '../widgets/app_icon_widget.dart';
 import 'app_picker_screen.dart';
 
 class AddAppScreen extends StatefulWidget {
@@ -22,7 +23,7 @@ class _AddAppScreenState extends State<AddAppScreen> {
   late double _delaySeconds;
   late int _graceMinutes;
 
-  static const _presets = [10, 30, 60, 120, 300];
+  static const _presets = [10, 15, 20, 30, 60];
   static const _gracePresets = [0, 1, 2, 5, 10, 30];
 
   @override
@@ -30,7 +31,7 @@ class _AddAppScreenState extends State<AddAppScreen> {
     super.initState();
     _appName = widget.existing?.name;
     _packageName = widget.existing?.packageName;
-    _delaySeconds = (widget.existing?.delaySeconds ?? 30).toDouble();
+    _delaySeconds = (widget.existing?.delaySeconds ?? 10).toDouble();
     _graceMinutes = widget.existing?.graceMinutes ?? 2;
   }
 
@@ -104,7 +105,7 @@ class _AddAppScreenState extends State<AddAppScreen> {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: _appName != null
@@ -115,24 +116,12 @@ class _AddAppScreenState extends State<AddAppScreen> {
               ),
               child: Row(
                 children: [
-                  if (_appName != null)
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _iconColor.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          _appName!.substring(0, 1).toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: _iconColor,
-                          ),
-                        ),
-                      ),
+                  if (_appName != null && _packageName != null)
+                    AppIconWidget(
+                      packageName: _packageName!,
+                      appName: _appName!,
+                      size: 44,
+                      borderRadius: 12,
                     )
                   else
                     Container(
@@ -156,7 +145,7 @@ class _AddAppScreenState extends State<AddAppScreen> {
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: _appName != null
-                                ? const Color(0xFF2D2D3A)
+                                ? Theme.of(context).colorScheme.onSurface
                                 : const Color(0xFF9896B0),
                           ),
                         ),
@@ -181,12 +170,12 @@ class _AddAppScreenState extends State<AddAppScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Delay Duration',
                 style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF2D2D3A)),
+                    color: Theme.of(context).colorScheme.onSurface),
               ),
               Container(
                 padding:
@@ -235,8 +224,8 @@ class _AddAppScreenState extends State<AddAppScreen> {
             child: Slider(
               value: _delaySeconds,
               min: 5,
-              max: 300,
-              divisions: 59,
+              max: 60,
+              divisions: 11,
               onChanged: (v) =>
                   setState(() => _delaySeconds = (v / 5).round() * 5.0),
             ),
@@ -250,7 +239,7 @@ class _AddAppScreenState extends State<AddAppScreen> {
                 Text('5 sec',
                     style:
                         TextStyle(fontSize: 12, color: Color(0xFF9896B0))),
-                Text('5 min',
+                Text('1 min',
                     style:
                         TextStyle(fontSize: 12, color: Color(0xFF9896B0))),
               ],
@@ -263,12 +252,12 @@ class _AddAppScreenState extends State<AddAppScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Re-open Window',
                 style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF2D2D3A)),
+                    color: Theme.of(context).colorScheme.onSurface),
               ),
               Container(
                 padding:
@@ -357,7 +346,7 @@ class _Chip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? selectedColor : Colors.white,
+          color: selected ? selectedColor : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
@@ -365,7 +354,7 @@ class _Chip extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : const Color(0xFF2D2D3A),
+            color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ),

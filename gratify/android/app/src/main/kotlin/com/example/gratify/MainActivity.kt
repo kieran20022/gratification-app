@@ -38,7 +38,10 @@ class MainActivity : FlutterActivity() {
                     )
                     result.success(null)
                 }
-                "getInstalledApps" -> result.success(getInstalledApps())
+                "getInstalledApps" -> Thread {
+                    val apps = getInstalledApps()
+                    runOnUiThread { result.success(apps) }
+                }.start()
                 "getAppIcon" -> {
                     val pkg = call.argument<String>("packageName")!!
                     result.success(getAppIconBytes(pkg))

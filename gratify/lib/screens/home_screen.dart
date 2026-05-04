@@ -4,8 +4,8 @@ import '../services/app_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/app_icon_widget.dart';
 import 'add_app_screen.dart';
-import 'delay_screen.dart';
 import 'permissions_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -92,23 +92,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openApp(RestrictedApp app) async {
-    final now = DateTime.now();
-    final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final updated = app.copyWith(
-      dailyAttempts: app.dailyAttempts + 1,
-      lastAttemptDate: today,
-    );
-    final index = _apps.indexWhere((a) => a.id == app.id);
-    setState(() => _apps[index] = updated);
-    await _storage.saveApps(_apps);
-    if (!mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => DelayScreen(app: updated)),
-    );
-  }
-
   Future<void> _addApp() async {
     await Navigator.push(
       context,
@@ -150,6 +133,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('Gratify'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
           if (_apps.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 12),
@@ -186,7 +177,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       : _AppList(
                           apps: _apps,
                           monitoring: _monitoring,
-                          onOpen: _openApp,
                           onEdit: _editApp,
                           onDelete: _deleteApp,
                         ),
@@ -270,12 +260,12 @@ class _EmptyState extends StatelessWidget {
                   size: 48, color: Color(0xFF7B6FD4)),
             ),
             const SizedBox(height: 28),
-            const Text(
+            Text(
               'No apps restricted yet',
               style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF2D2D3A),
+                  color: Theme.of(context).colorScheme.onSurface,
                   letterSpacing: -0.3),
             ),
             const SizedBox(height: 10),
@@ -311,14 +301,12 @@ class _EmptyState extends StatelessWidget {
 class _AppList extends StatelessWidget {
   final List<RestrictedApp> apps;
   final bool monitoring;
-  final ValueChanged<RestrictedApp> onOpen;
   final ValueChanged<RestrictedApp> onEdit;
   final ValueChanged<RestrictedApp> onDelete;
 
   const _AppList({
     required this.apps,
     required this.monitoring,
-    required this.onOpen,
     required this.onEdit,
     required this.onDelete,
   });
@@ -366,7 +354,7 @@ class _AppList extends StatelessWidget {
               final app = apps[index];
               return _AppCard(
                 app: app,
-                onTap: () => onOpen(app),
+                onTap: () => onEdit(app),
                 onEdit: () => onEdit(app),
                 onDelete: () => onDelete(app),
               );
@@ -395,7 +383,7 @@ class _AppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -416,10 +404,10 @@ class _AppCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(app.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF2D2D3A))),
+                            color: Theme.of(context).colorScheme.onSurface)),
                     const SizedBox(height: 4),
                     Row(
                       children: [

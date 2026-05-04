@@ -70,17 +70,17 @@ class _GratifyAppState extends State<GratifyApp> {
       title: 'Gratify',
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.system,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme:
-            ColorScheme.fromSeed(
-              seedColor: const Color(0xFF7B6FD4),
-              brightness: Brightness.light,
-            ).copyWith(
-              surface: const Color(0xFFF7F5FF),
-              primary: const Color(0xFF7B6FD4),
-              secondary: const Color(0xFF6BBFB5),
-            ),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF7B6FD4),
+          brightness: Brightness.light,
+        ).copyWith(
+          surface: const Color(0xFFF7F5FF),
+          primary: const Color(0xFF7B6FD4),
+          secondary: const Color(0xFF6BBFB5),
+        ),
         scaffoldBackgroundColor: const Color(0xFFF7F5FF),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFF7F5FF),
@@ -94,6 +94,31 @@ class _GratifyAppState extends State<GratifyApp> {
             letterSpacing: -0.3,
           ),
           iconTheme: IconThemeData(color: Color(0xFF2D2D3A)),
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF7B6FD4),
+          brightness: Brightness.dark,
+        ).copyWith(
+          surface: const Color(0xFF1E1C2E),
+          primary: const Color(0xFF9B8AFF),
+          secondary: const Color(0xFF6BBFB5),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF12111A),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF12111A),
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(
+            color: Color(0xFFECEAFF),
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+          iconTheme: IconThemeData(color: Color(0xFFECEAFF)),
         ),
       ),
       home: const HomeScreen(),

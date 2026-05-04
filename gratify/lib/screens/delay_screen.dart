@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../models/app_settings.dart';
 import '../models/restricted_app.dart';
 import '../services/app_service.dart';
+import '../services/settings_service.dart';
 import '../widgets/app_icon_widget.dart';
 import '../widgets/countdown_ring.dart';
 
@@ -26,6 +29,7 @@ class _DelayScreenState extends State<DelayScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   bool _canOpen = false;
+  AppSettings _settings = const AppSettings();
 
   @override
   void initState() {
@@ -39,6 +43,9 @@ class _DelayScreenState extends State<DelayScreen>
         }
       });
     _controller.forward();
+    SettingsService().load().then((s) {
+      if (mounted) setState(() => _settings = s);
+    });
   }
 
   @override
@@ -51,6 +58,7 @@ class _DelayScreenState extends State<DelayScreen>
     if (widget.fromService) {
       await AppService.recordAccessGranted(widget.app.packageName);
       await AppService.openApp(); // moveTaskToBack — restricted app resurfaces
+      SystemNavigator.pop(); // fully close Gratify
     } else {
       if (mounted) Navigator.pop(context);
     }
@@ -76,11 +84,14 @@ class _DelayScreenState extends State<DelayScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFF7F5FF), Color(0xFFEDE8FF)],
+            colors: [
+              Theme.of(context).scaffoldBackgroundColor,
+              Theme.of(context).colorScheme.surface,
+            ],
           ),
         ),
         child: SafeArea(
@@ -88,36 +99,33 @@ class _DelayScreenState extends State<DelayScreen>
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Column(
               children: [
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Color(0xFF9896B0)),
-                  ),
-                ),
                 const Spacer(flex: 2),
-                AppIconWidget(
-                  packageName: widget.app.packageName,
-                  appName: widget.app.name,
-                  size: 72,
-                  borderRadius: 20,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  widget.app.name,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF2D2D3A),
-                    letterSpacing: -0.5,
+                if (_settings.showAppLogo)
+                  AppIconWidget(
+                    packageName: widget.app.packageName,
+                    appName: widget.app.name,
+                    size: 72,
+                    borderRadius: 20,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _attemptsText,
-                  style: const TextStyle(fontSize: 14, color: Color(0xFF9896B0)),
-                ),
+                if (_settings.showAppLogo && _settings.showAppName)
+                  const SizedBox(height: 16),
+                if (_settings.showAppName)
+                  Text(
+                    widget.app.name,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onSurface,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                if (_settings.showAttemptCount) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _attemptsText,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF9896B0)),
+                  ),
+                ],
                 const Spacer(flex: 1),
                 AnimatedBuilder(
                   animation: _controller,
@@ -129,26 +137,28 @@ class _DelayScreenState extends State<DelayScreen>
                     return CountdownRing(
                       progress: progress,
                       secondsRemaining: remaining,
+                      style: _settings.countdownStyle,
+                      showNumbers: _settings.showCountdownNumbers,
                     );
                   },
                 ),
                 const Spacer(flex: 1),
-                const Text(
-                  'Are you sure you want to\nopen this app?',
+                Text(
+                  _settings.heading,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF2D2D3A),
+                    color: Theme.of(context).colorScheme.onSurface,
                     height: 1.5,
                     letterSpacing: -0.2,
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Take a breath. This is your moment\nto pause and reflect.',
+                Text(
+                  _settings.subtitle,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF9896B0),
                     height: 1.6,

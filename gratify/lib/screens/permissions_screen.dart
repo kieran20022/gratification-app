@@ -61,12 +61,12 @@ class _PermissionsScreenState extends State<PermissionsScreen>
                     color: Color(0xFF7B6FD4), size: 28),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Two quick steps',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF2D2D3A),
+                  color: Theme.of(context).colorScheme.onSurface,
                   letterSpacing: -0.5,
                 ),
               ),
@@ -146,7 +146,7 @@ class _PermStep extends StatelessWidget {
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: granted
@@ -195,10 +195,10 @@ class _PermStep extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
-                        color: Color(0xFF2D2D3A))),
+                        color: Theme.of(context).colorScheme.onSurface)),
                 const SizedBox(height: 4),
                 Text(description,
                     style: const TextStyle(

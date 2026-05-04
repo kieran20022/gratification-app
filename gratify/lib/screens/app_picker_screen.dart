@@ -79,46 +79,39 @@ class _AppPickerScreenState extends State<AppPickerScreen> {
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          if (!_loading)
-            _filtered.isEmpty
-                ? const Center(
-                    child: Text('No apps found',
-                        style: TextStyle(color: Color(0xFF9896B0))),
-                  )
-                : ListView.builder(
-                    itemCount: _filtered.length,
-                    itemBuilder: (context, i) {
-                      final app = _filtered[i];
-                      final name = app['name']!;
-                      final pkg = app['packageName']!;
-                      return ListTile(
-                        leading: AppIconWidget(
-                          packageName: pkg,
-                          appName: name,
-                          size: 42,
-                          borderRadius: 10,
-                        ),
-                        title: Text(name,
-                            style: const TextStyle(fontWeight: FontWeight.w500)),
-                        subtitle: Text(
-                          pkg,
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xFF9896B0)),
-                        ),
-                        onTap: () => Navigator.pop(context, app),
-                      );
-                    },
-                  ),
-          // Thin loading bar at top while fetching the list
-          if (_loading)
-            const LinearProgressIndicator(
-              backgroundColor: Colors.transparent,
-              color: Color(0xFF7B6FD4),
-            ),
-        ],
-      ),
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF7B6FD4)),
+            )
+          : _filtered.isEmpty
+              ? const Center(
+                  child: Text('No apps found',
+                      style: TextStyle(color: Color(0xFF9896B0))),
+                )
+              : ListView.builder(
+                  itemCount: _filtered.length,
+                  itemBuilder: (context, i) {
+                    final app = _filtered[i];
+                    final name = app['name']!;
+                    final pkg = app['packageName']!;
+                    return ListTile(
+                      leading: AppIconWidget(
+                        packageName: pkg,
+                        appName: name,
+                        size: 42,
+                        borderRadius: 10,
+                      ),
+                      title: Text(name,
+                          style: const TextStyle(fontWeight: FontWeight.w500)),
+                      subtitle: Text(
+                        pkg,
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF9896B0)),
+                      ),
+                      onTap: () => Navigator.pop(context, app),
+                    );
+                  },
+                ),
     );
   }
 }
