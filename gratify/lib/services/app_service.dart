@@ -1,4 +1,4 @@
-import 'package:flutter/services.dart';
+﻿import 'package:flutter/services.dart';
 
 class AppService {
   static const _ch = MethodChannel('com.gratify/app_monitor');

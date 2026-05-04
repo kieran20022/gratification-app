@@ -82,6 +82,7 @@ class _DelayScreenState extends State<DelayScreen>
 
   @override
   Widget build(BuildContext context) {
+    final s = _settings;
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -100,70 +101,75 @@ class _DelayScreenState extends State<DelayScreen>
             child: Column(
               children: [
                 const Spacer(flex: 2),
-                if (_settings.showAppLogo)
+                if (s.showAppLogo)
                   AppIconWidget(
                     packageName: widget.app.packageName,
                     appName: widget.app.name,
                     size: 72,
                     borderRadius: 20,
                   ),
-                if (_settings.showAppLogo && _settings.showAppName)
-                  const SizedBox(height: 16),
-                if (_settings.showAppName)
+                if (s.showAppLogo && s.showAppName) const SizedBox(height: 16),
+                if (s.showAppName)
                   Text(
                     widget.app.name,
                     style: TextStyle(
-                      fontSize: 24,
+                      fontSize: s.fontSizeAppName,
                       fontWeight: FontWeight.w700,
                       color: Theme.of(context).colorScheme.onSurface,
                       letterSpacing: -0.5,
                     ),
                   ),
-                if (_settings.showAttemptCount) ...[
+                if (s.showAttemptCount) ...[
                   const SizedBox(height: 8),
                   Text(
                     _attemptsText,
-                    style: const TextStyle(fontSize: 14, color: Color(0xFF9896B0)),
+                    style: TextStyle(
+                      fontSize: s.fontSizeAttemptCount,
+                      color: const Color(0xFF9896B0),
+                    ),
                   ),
                 ],
                 const Spacer(flex: 1),
                 AnimatedBuilder(
                   animation: _controller,
                   builder: (context, _) {
-                    final progress = 1.0 - _controller.value;
-                    final remaining =
-                        (widget.app.delaySeconds * (1 - _controller.value))
-                            .ceil();
+                    final progress  = 1.0 - _controller.value;
+                    final remaining = (widget.app.delaySeconds * (1 - _controller.value)).ceil();
                     return CountdownRing(
                       progress: progress,
                       secondsRemaining: remaining,
-                      style: _settings.countdownStyle,
-                      showNumbers: _settings.showCountdownNumbers,
+                      style: s.countdownStyle,
+                      showNumbers: s.showCountdownNumbers,
+                      numberFontSize: s.fontSizeTimerNumber,
+                      labelFontSize:  s.fontSizeTimerLabel,
+                      showBreathText: s.showBreathText,
                     );
                   },
                 ),
                 const Spacer(flex: 1),
-                Text(
-                  _settings.heading,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w500,
-                    color: Theme.of(context).colorScheme.onSurface,
-                    height: 1.5,
-                    letterSpacing: -0.2,
+                if (s.showHeading)
+                  Text(
+                    s.heading,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: s.fontSizeHeading,
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.onSurface,
+                      height: 1.5,
+                      letterSpacing: -0.2,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  _settings.subtitle,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF9896B0),
-                    height: 1.6,
+                if (s.showHeading && s.showSubtitle) const SizedBox(height: 10),
+                if (s.showSubtitle)
+                  Text(
+                    s.subtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: s.fontSizeSubtitle,
+                      color: const Color(0xFF9896B0),
+                      height: 1.6,
+                    ),
                   ),
-                ),
                 const Spacer(flex: 2),
                 ElevatedButton(
                   onPressed: _canOpen ? _onOpenApp : null,

@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 class RestrictedApp {
   final String id;
@@ -10,6 +10,12 @@ class RestrictedApp {
   final int graceMinutes;
   final int dailyAttempts;
   final String lastAttemptDate;
+  /// Whether to force grayscale display when this app is open.
+  final bool grayscale;
+  /// Start of the grayscale time window (minutes since midnight), or null for all day.
+  final int? grayscaleStartMinute;
+  /// End of the grayscale time window (minutes since midnight), or null for all day.
+  final int? grayscaleEndMinute;
 
   const RestrictedApp({
     required this.id,
@@ -19,6 +25,9 @@ class RestrictedApp {
     this.graceMinutes = 2,
     this.dailyAttempts = 0,
     this.lastAttemptDate = '',
+    this.grayscale = false,
+    this.grayscaleStartMinute,
+    this.grayscaleEndMinute,
   });
 
   String get delayLabel {
@@ -37,6 +46,9 @@ class RestrictedApp {
     int? graceMinutes,
     int? dailyAttempts,
     String? lastAttemptDate,
+    bool? grayscale,
+    Object? grayscaleStartMinute = _sentinel,
+    Object? grayscaleEndMinute = _sentinel,
   }) {
     return RestrictedApp(
       id: id ?? this.id,
@@ -46,6 +58,13 @@ class RestrictedApp {
       graceMinutes: graceMinutes ?? this.graceMinutes,
       dailyAttempts: dailyAttempts ?? this.dailyAttempts,
       lastAttemptDate: lastAttemptDate ?? this.lastAttemptDate,
+      grayscale: grayscale ?? this.grayscale,
+      grayscaleStartMinute: grayscaleStartMinute == _sentinel
+          ? this.grayscaleStartMinute
+          : grayscaleStartMinute as int?,
+      grayscaleEndMinute: grayscaleEndMinute == _sentinel
+          ? this.grayscaleEndMinute
+          : grayscaleEndMinute as int?,
     );
   }
 
@@ -57,6 +76,9 @@ class RestrictedApp {
         'graceMinutes': graceMinutes,
         'dailyAttempts': dailyAttempts,
         'lastAttemptDate': lastAttemptDate,
+        'grayscale': grayscale,
+        'grayscaleStartMinute': grayscaleStartMinute,
+        'grayscaleEndMinute': grayscaleEndMinute,
       };
 
   factory RestrictedApp.fromMap(Map<String, dynamic> map) => RestrictedApp(
@@ -67,6 +89,9 @@ class RestrictedApp {
         graceMinutes: (map['graceMinutes'] as int?) ?? 2,
         dailyAttempts: (map['dailyAttempts'] as int?) ?? 0,
         lastAttemptDate: (map['lastAttemptDate'] as String?) ?? '',
+        grayscale: (map['grayscale'] as bool?) ?? false,
+        grayscaleStartMinute: map['grayscaleStartMinute'] as int?,
+        grayscaleEndMinute: map['grayscaleEndMinute'] as int?,
       );
 
   String toJson() => jsonEncode(toMap());
@@ -74,3 +99,6 @@ class RestrictedApp {
   factory RestrictedApp.fromJson(String source) =>
       RestrictedApp.fromMap(jsonDecode(source) as Map<String, dynamic>);
 }
+
+// Sentinel used by copyWith to distinguish "omitted" from explicit null.
+const _sentinel = Object();

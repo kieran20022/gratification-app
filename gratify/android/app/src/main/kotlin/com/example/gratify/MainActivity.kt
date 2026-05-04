@@ -1,4 +1,4 @@
-package com.example.gratify
+﻿package com.example.gratify
 
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
