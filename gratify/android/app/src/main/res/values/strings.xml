@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">Gratify uses accessibility events to detect when a restricted app is opened and show the mindfulness delay screen.</string>
+</resources>
