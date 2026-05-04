@@ -1,84 +1,88 @@
-# How Gratify Works
+# How App Blocking Works in Gratify
 
-## Overview
+## Platform support
 
-Gratify has two independent parts that communicate through SharedPreferences:
-
-1. **The Accessibility Service** (Kotlin, always running in the background) — detects when a restricted app is opened
-2. **The Flutter UI** (only active when Gratify is on screen) — shows the countdown and handles user decisions
+Android only. iOS does not expose a public API to detect foreground app changes from a third-party app, so the blocking mechanism described below is unavailable on iOS. A Screen Time / Family Controls approach would be required for iOS but needs a special Apple entitlement.
 
 ---
 
-## Detection: How the service knows an app was opened
+## Required permissions
 
-Android calls `onAccessibilityEvent()` on `AppMonitorAccessibilityService` every time any window appears on screen. The service filters down to what matters:
+The user must grant two Android permissions before monitoring works:
 
-1. Event type must be `TYPE_WINDOW_STATE_CHANGED` (a new window came to the foreground)
-2. The package must belong to a user-launchable app (filters out keyboard, status bar, system dialogs)
-3. The package must be different from the last detected foreground app (filters out navigating between activities *within* the same app)
-4. Monitoring must be enabled (`flutter.monitoring_enabled` flag in SharedPreferences)
-5. The package must be in the restricted apps list (`flutter.restricted_apps` in SharedPreferences)
-6. There must be no active grace period for this package (`gratify_grace` SharedPreferences)
+| Permission | Why needed |
+|---|---|
+| **Accessibility Service** (`android.permission.BIND_ACCESSIBILITY_SERVICE`) | Lets the app receive `TYPE_WINDOW_STATE_CHANGED` events so it knows which app just came to the foreground |
+| **Display Over Other Apps** (`SYSTEM_ALERT_WINDOW`) | Allows Gratify's activity to overlay the restricted app while the delay screen is shown |
 
-If all six pass, the service fires an Intent that launches `MainActivity` with `SHOW_DELAY = true`.
-
-### Why this is better than the old approach
-
-The previous system used `UsageStatsManager` polled every 1 second. That had two fatal flaws:
-- Instagram and TikTok run background sync activities that fire `ACTIVITY_RESUMED` events, causing the "last seen package" to update even when the user never opened the app
-- `UsageStatsManager` has a reporting delay, so events could be missed between polls
-
-`TYPE_WINDOW_STATE_CHANGED` fires synchronously when a window is *shown to the user*. Background sync threads never create visible windows, so they produce zero false events.
+Additionally the manifest declares `QUERY_ALL_PACKAGES` so the app can enumerate all installed apps for the picker.
 
 ---
 
-## Interruption: How Gratify appears on top
+## Step-by-step interception flow
 
-When the service fires the Intent:
+1. **User enables monitoring** in the home screen → Flutter calls `AppService.startMonitoring()` via the `com.gratify/app_monitor` MethodChannel → `MainActivity` sets `flutter.monitoring_enabled = true` in `FlutterSharedPreferences`.
 
-- `FLAG_ACTIVITY_NEW_TASK` — required to start an activity from a non-activity context (the service)
-- `FLAG_ACTIVITY_SINGLE_TOP` — if Gratify is already on top, reuse it rather than stacking a new instance
+2. **User opens a restricted app** from the launcher or any other app.
 
-`MainActivity` receives the Intent, extracts the package name / app name / delay seconds, and calls `methodChannel.invokeMethod("onAppOpened", data)` to pass it to Flutter.
+3. **`AppMonitorAccessibilityService.onAccessibilityEvent`** fires with event type `TYPE_WINDOW_STATE_CHANGED`. The service checks in order:
+   - Is the package Gratify itself? → skip (prevent infinite loop).
+   - Is the package a launchable user app? (checked against `launchableCache`, built once at runtime from packages that have a launcher intent) → skip system dialogs, keyboard, status bar, etc.
+   - Is it the same app already in the foreground (`lastForegroundPkg`)? → skip in-app navigation events.
+   - Is `flutter.monitoring_enabled` true in shared prefs? → if false, skip.
+   - Is the package in the `flutter.restricted_apps` JSON list in shared prefs? → if not listed, skip.
 
-In Flutter (`main.dart`), `_handleAppOpened` is called, which:
-1. Loads the restricted app from storage
-2. Increments the daily attempt counter and saves it back
-3. Pushes `DelayScreen` onto the navigator stack with `fromService: true`
+4. **Service fires an Intent** to `MainActivity` with flags `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_SINGLE_TOP` and extras: `SHOW_DELAY=true`, `PKG`, `APP_NAME`, `DELAY_SECS`.
 
----
+5. **`MainActivity.handleIntent`** is called (via `onNewIntent` if already running, or directly after `configureFlutterEngine`). It packages the extras into a map and calls `methodChannel.invokeMethod("onAppOpened", data)`. If the Flutter engine is not ready yet, it parks the data in `pendingDelay` and delivers it once the engine starts.
 
-## The Delay Screen
+6. **`AppService.setOnAppOpened` callback** in Flutter receives the call, increments the `dailyAttempts` counter in `StorageService` (shared prefs), and pushes a `DelayScreen` route onto the navigator.
 
-The countdown uses an `AnimationController` running for `delaySeconds`. The "Open App" button is disabled until the animation completes.
+7. **`DelayScreen`** shows:
+   - The app icon and name.
+   - How many times the user has tried to open the app today.
+   - A circular countdown ring animating from full to empty over `delaySeconds`.
+   - "Are you sure you want to open this app?" prompt.
 
-**"Open App" tapped:**
-1. Calls `openApp()` — calls `moveTaskToBack(true)`, which pushes Gratify behind the restricted app (the restricted app resurfaces because it was already open underneath)
-
-**"Never mind" tapped:**
-1. Calls `goHome()` — fires a `ACTION_MAIN + CATEGORY_HOME` Intent, sending the user to the Android home screen
-2. Pops the delay screen from the Flutter navigator
-
-## The `lastForegroundPkg` Variable
-
-The service keeps track of the last package it processed. If the same package fires another `TYPE_WINDOW_STATE_CHANGED` event (e.g., the user opens a different activity within the same app), it is skipped.
-
-**Known failure mode:** If the user switches to a different launchable app (e.g., opens their browser) and then returns to the restricted app, `lastForegroundPkg` changes to the browser and then back — so the restricted app is treated as a fresh open and the service will check the grace period again. If the grace period is still active, nothing happens. If it expired, the delay fires again.
+8. **After the countdown completes** the "Open App" button becomes active.
+   - **Open App** → calls `AppService.openApp()` → `moveTaskToBack(true)` on `MainActivity` → Gratify moves to the background → the restricted app resurfaces.
+   - **Never mind** → calls `AppService.goHome()` → launches the Android home screen intent → pops the delay route.
 
 ---
 
-## The Monitoring Toggle
+## When it doesn't work
 
-The toggle in the home screen does **not** start or stop the accessibility service. The service is always running once enabled in Android Settings. The toggle writes `flutter.monitoring_enabled = true/false` to SharedPreferences. The service reads this flag on every event and skips everything if it is false.
+- **Permissions revoked**: If the user disables the Accessibility Service or the overlay permission in Android Settings, the service stops firing and the blocking mechanism is completely inactive. The app has no way to re-enable these programmatically.
+- **Gratify's process is killed**: Android's battery optimisation (Doze, App Standby, manufacturer-specific killers) can terminate the accessibility service's process. When this happens the service stops receiving events until the user relaunches Gratify or the service is automatically restarted by Android (not guaranteed).
+- **Monitoring toggle is off**: The `flutter.monitoring_enabled` flag is `false` either because the user turned it off in-app or because `startMonitoring` was never called.
+- **Restricted apps list is missing or corrupt**: If shared prefs cannot be read (e.g., after a data-clear, or a JSON parse error) `findRestrictedApp` returns null and no delay is shown.
+- **App launched via ADB or automation**: An app started via `adb shell am start` does not always produce a `TYPE_WINDOW_STATE_CHANGED` event visible to a third-party accessibility service.
+- **Android 14+ restricted accessibility services**: Some OEMs and future Android versions may further restrict which accessibility services can run in the background or may require additional whitelisting.
 
 ---
 
-## Known Weak Points
+## Edge cases and known limitations
 
-1. **`lastForegroundPkg` is reset when the service process is killed.** Android can kill the service process under memory pressure. When it restarts, `lastForegroundPkg` is null, so the next foreground event for any app — including one with an active grace period — will re-evaluate. The grace period check will still protect the user in most cases, but if the grace period also expired, the delay fires again.
+### Interception timing
+The accessibility event fires *after* the target app's window is already visible. There is a brief moment (tens of milliseconds) where the user can see the restricted app before Gratify overlays it. It is not a true preemptive block.
 
-2. **`launchableCache` is rebuilt on every service restart.** This is a minor performance cost but not a correctness issue.
+### Launchable app cache is stale
+`launchableCache` is built once the first time the service checks and never refreshed during the service's lifetime. Apps installed after the cache is built will not be in the cache and cannot be intercepted until the service restarts (e.g., device reboot or Gratify relaunch).
 
-3. **New apps installed after the cache is built are not in the cache.** Currently `cacheFilled` is set to `true` permanently once built. Newly installed apps would not pass the `isLaunchableApp` check until the service restarts.
+### X (close) button does not go home
+The delay screen's top-left close icon calls `Navigator.pop(context)` unconditionally, even when `fromService=true`. This leaves the user on Gratify's home screen — the restricted app is still in the background task stack. If the user then minimises Gratify (e.g., via the recents button), Android may surface the restricted app directly without a new delay screen trigger. The "Never mind" button handles this correctly by going to the home screen first.
 
-4. **The accessibility service can be disabled by the user in Android Settings** at any time. Gratify has no way to re-enable it automatically — it can only detect that it is off and show the permissions banner.
+### Rapid re-opening after "Open App"
+When "Open App" is tapped, `moveTaskToBack` surfaces the restricted app. If the user then switches to another app and back to the restricted app, the accessibility service fires again and a new delay screen is shown — which is intended behaviour, but may feel punishing to users who feel they already "earned" access.
+
+### Apps that don't fire TYPE_WINDOW_STATE_CHANGED
+Apps that use custom `SurfaceView`/`TextureView` rendering (many games, some video players) or apps launched as system overlays may not produce a `TYPE_WINDOW_STATE_CHANGED` event and cannot be intercepted.
+
+### Countdown resets if Gratify is killed
+The delay countdown lives in Flutter's `AnimationController`. If the system kills Gratify's process while the delay screen is showing (e.g., low memory) and the user later reopens the restricted app, a fresh countdown starts. There is no persistence of a partially elapsed timer.
+
+### No iOS support
+The iOS entitlements (`ScreenTime`/`ManagedSettings`) required to block apps at the OS level require an Apple-issued Family Controls entitlement and a Screen Time API integration. The app currently builds for iOS but has no blocking functionality there.
+
+### Shared preferences race condition
+The accessibility service reads `FlutterSharedPreferences` synchronously on the main thread. If Flutter is writing the restricted apps list at the exact same moment (e.g., during a save), the service might read a missing `restricted_apps` key and skip the interception. SharedPreferences `apply()` is atomic per-key so JSON corruption is unlikely, but a first-write scenario could cause a single missed trigger.

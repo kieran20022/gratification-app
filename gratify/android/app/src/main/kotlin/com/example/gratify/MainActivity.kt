@@ -56,6 +56,14 @@ class MainActivity : FlutterActivity() {
                     val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
                     result.success(isAccessibilityServiceEnabled() && prefs.getBoolean("flutter.monitoring_enabled", true))
                 }
+                "recordAccessGranted" -> {
+                    val pkg = call.argument<String>("packageName")!!
+                    getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                        .edit()
+                        .putLong("flutter.access_granted_$pkg", System.currentTimeMillis())
+                        .apply()
+                    result.success(null)
+                }
                 "openApp" -> {
                     moveTaskToBack(true)
                     result.success(null)

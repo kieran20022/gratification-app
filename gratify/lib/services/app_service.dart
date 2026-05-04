@@ -34,6 +34,9 @@ class AppService {
 
   static Future<void> goHome() => _ch.invokeMethod('goHome');
 
+  static Future<void> recordAccessGranted(String packageName) =>
+      _ch.invokeMethod('recordAccessGranted', {'packageName': packageName});
+
   static void setOnAppOpened(
     void Function(String packageName, String appName, int delaySeconds) handler,
   ) {

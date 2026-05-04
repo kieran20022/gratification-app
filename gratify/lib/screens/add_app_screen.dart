@@ -20,8 +20,10 @@ class _AddAppScreenState extends State<AddAppScreen> {
   String? _appName;
   String? _packageName;
   late double _delaySeconds;
+  late int _graceMinutes;
 
   static const _presets = [10, 30, 60, 120, 300];
+  static const _gracePresets = [0, 1, 2, 5, 10, 30];
 
   @override
   void initState() {
@@ -29,6 +31,7 @@ class _AddAppScreenState extends State<AddAppScreen> {
     _appName = widget.existing?.name;
     _packageName = widget.existing?.packageName;
     _delaySeconds = (widget.existing?.delaySeconds ?? 30).toDouble();
+    _graceMinutes = widget.existing?.graceMinutes ?? 2;
   }
 
   String _formatDelay(double seconds) {
@@ -65,6 +68,7 @@ class _AddAppScreenState extends State<AddAppScreen> {
       name: _appName!,
       packageName: _packageName!,
       delaySeconds: _delaySeconds.round(),
+      graceMinutes: _graceMinutes,
       dailyAttempts: widget.existing?.dailyAttempts ?? 0,
       lastAttemptDate: widget.existing?.lastAttemptDate ?? '',
     );
@@ -253,6 +257,61 @@ class _AddAppScreenState extends State<AddAppScreen> {
             ),
           ),
 
+          const SizedBox(height: 32),
+
+          // Grace period
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Re-open Window',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2D2D3A)),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6BBFB5).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _graceMinutes == 0
+                      ? 'Always delay'
+                      : _graceMinutes == 1
+                          ? '1 minute'
+                          : '$_graceMinutes minutes',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6BBFB5)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'After opening, re-opens within this window skip the delay.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF9896B0), height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _gracePresets.map((m) {
+              final selected = _graceMinutes == m;
+              final label = m == 0 ? 'Off' : m == 1 ? '1m' : '${m}m';
+              return _Chip(
+                label: label,
+                selected: selected,
+                selectedColor: const Color(0xFF6BBFB5),
+                onTap: () => setState(() => _graceMinutes = m),
+              );
+            }).toList(),
+          ),
+
           const SizedBox(height: 48),
 
           ElevatedButton(
@@ -281,9 +340,14 @@ class _Chip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final Color selectedColor;
 
-  const _Chip(
-      {required this.label, required this.selected, required this.onTap});
+  const _Chip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.selectedColor = const Color(0xFF7B6FD4),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -293,7 +357,7 @@ class _Chip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF7B6FD4) : Colors.white,
+          color: selected ? selectedColor : Colors.white,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(

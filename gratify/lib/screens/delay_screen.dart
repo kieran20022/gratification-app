@@ -49,6 +49,7 @@ class _DelayScreenState extends State<DelayScreen>
 
   Future<void> _onOpenApp() async {
     if (widget.fromService) {
+      await AppService.recordAccessGranted(widget.app.packageName);
       await AppService.openApp(); // moveTaskToBack — restricted app resurfaces
     } else {
       if (mounted) Navigator.pop(context);
