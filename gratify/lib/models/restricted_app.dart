@@ -16,6 +16,10 @@ class RestrictedApp {
   final int? grayscaleStartMinute;
   /// End of the grayscale time window (minutes since midnight), or null for all day.
   final int? grayscaleEndMinute;
+  /// Show a nudge overlay every X minutes while the app is open. 0 = disabled.
+  final int reminderIntervalSeconds;
+  /// Re-trigger the delay screen after X minutes of continuous use. 0 = disabled.
+  final int usageLimitSeconds;
 
   const RestrictedApp({
     required this.id,
@@ -28,6 +32,8 @@ class RestrictedApp {
     this.grayscale = false,
     this.grayscaleStartMinute,
     this.grayscaleEndMinute,
+    this.reminderIntervalSeconds = 0,
+    this.usageLimitSeconds = 0,
   });
 
   String get delayLabel {
@@ -49,6 +55,8 @@ class RestrictedApp {
     bool? grayscale,
     Object? grayscaleStartMinute = _sentinel,
     Object? grayscaleEndMinute = _sentinel,
+    int? reminderIntervalSeconds,
+    int? usageLimitSeconds,
   }) {
     return RestrictedApp(
       id: id ?? this.id,
@@ -65,6 +73,8 @@ class RestrictedApp {
       grayscaleEndMinute: grayscaleEndMinute == _sentinel
           ? this.grayscaleEndMinute
           : grayscaleEndMinute as int?,
+      reminderIntervalSeconds: reminderIntervalSeconds ?? this.reminderIntervalSeconds,
+      usageLimitSeconds: usageLimitSeconds ?? this.usageLimitSeconds,
     );
   }
 
@@ -79,6 +89,8 @@ class RestrictedApp {
         'grayscale': grayscale,
         'grayscaleStartMinute': grayscaleStartMinute,
         'grayscaleEndMinute': grayscaleEndMinute,
+        'reminderIntervalSeconds': reminderIntervalSeconds,
+        'usageLimitSeconds': usageLimitSeconds,
       };
 
   factory RestrictedApp.fromMap(Map<String, dynamic> map) => RestrictedApp(
@@ -92,6 +104,8 @@ class RestrictedApp {
         grayscale: (map['grayscale'] as bool?) ?? false,
         grayscaleStartMinute: map['grayscaleStartMinute'] as int?,
         grayscaleEndMinute: map['grayscaleEndMinute'] as int?,
+        reminderIntervalSeconds: (map['reminderIntervalSeconds'] as int?) ?? 0,
+        usageLimitSeconds: (map['usageLimitSeconds'] as int?) ?? 0,
       );
 
   String toJson() => jsonEncode(toMap());

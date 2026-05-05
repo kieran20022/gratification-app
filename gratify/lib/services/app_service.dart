@@ -37,6 +37,12 @@ class AppService {
   static Future<void> recordAccessGranted(String packageName) =>
       _ch.invokeMethod('recordAccessGranted', {'packageName': packageName});
 
+  static Future<void> previewReminder(String appName, int intervalSeconds) =>
+      _ch.invokeMethod('previewReminder', {
+        'appName': appName,
+        'intervalSeconds': intervalSeconds,
+      });
+
   static void setOnAppOpened(
     void Function(String packageName, String appName, int delaySeconds) handler,
   ) {

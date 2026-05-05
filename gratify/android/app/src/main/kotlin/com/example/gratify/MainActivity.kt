@@ -67,9 +67,20 @@ class MainActivity : FlutterActivity() {
                         .apply()
                     result.success(null)
                 }
+                "previewReminder" -> {
+                    val appName = call.argument<String>("appName") ?: ""
+                    val intervalSeconds = call.argument<Int>("intervalSeconds") ?: 0
+                    sendBroadcast(Intent(AppMonitorAccessibilityService.ACTION_PREVIEW_REMINDER).apply {
+                        `package` = packageName
+                        putExtra("appName", appName)
+                        putExtra("intervalSeconds", intervalSeconds)
+                    })
+                    result.success(null)
+                }
                 "openApp" -> {
                     moveTaskToBack(true)
                     result.success(null)
+                    finishAndRemoveTask()
                 }
                 "goHome" -> {
                     val home = Intent(Intent.ACTION_MAIN).apply {
@@ -78,6 +89,7 @@ class MainActivity : FlutterActivity() {
                     }
                     startActivity(home)
                     result.success(null)
+                    finishAndRemoveTask()
                 }
                 else -> result.notImplemented()
             }

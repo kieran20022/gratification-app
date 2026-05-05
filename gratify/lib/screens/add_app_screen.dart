@@ -25,6 +25,8 @@ class _AddAppScreenState extends State<AddAppScreen> {
   late double _delaySeconds;
   late int _graceMinutes;
   late bool _grayscale;
+  late int _reminderIntervalSeconds;
+  late int _usageLimitSeconds;
 
   /// null means the grayscale window covers all day.
   TimeOfDay? _grayscaleStart;
@@ -37,6 +39,12 @@ class _AddAppScreenState extends State<AddAppScreen> {
   /// 0 means "always delay" — no grace window at all.
   static const _gracePresets = [0, 1, 2, 5, 10, 30];
 
+  /// Quick-select reminder interval presets (in seconds). 0 = disabled.
+  static const _reminderPresets = [0, 30, 300, 600, 900, 1800];
+
+  /// Quick-select session limit presets (in seconds). 0 = disabled.
+  static const _limitPresets = [0, 30, 300, 600, 900, 1800, 3600];
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +54,8 @@ class _AddAppScreenState extends State<AddAppScreen> {
     _delaySeconds = (widget.existing?.delaySeconds ?? 10).toDouble();
     _graceMinutes = widget.existing?.graceMinutes ?? 2;
     _grayscale = widget.existing?.grayscale ?? false;
+    _reminderIntervalSeconds = widget.existing?.reminderIntervalSeconds ?? 0;
+    _usageLimitSeconds = widget.existing?.usageLimitSeconds ?? 0;
     final startMin = widget.existing?.grayscaleStartMinute;
     final endMin = widget.existing?.grayscaleEndMinute;
     _grayscaleStart = startMin != null
@@ -65,6 +75,17 @@ class _AddAppScreenState extends State<AddAppScreen> {
     final rem = s % 60;
     if (rem == 0) return '$m minute${m > 1 ? 's' : ''}';
     return '$m min $rem sec';
+  }
+
+  /// Formats a seconds value as "30s", "5m", "1h", etc.
+  String _formatDuration(int seconds) {
+    if (seconds < 60) return '${seconds}s';
+    if (seconds < 3600) {
+      final m = seconds ~/ 60;
+      return '${m}m';
+    }
+    final h = seconds ~/ 3600;
+    return '${h}h';
   }
 
   String _formatTime(TimeOfDay t) {
@@ -136,6 +157,8 @@ class _AddAppScreenState extends State<AddAppScreen> {
       grayscale: _grayscale,
       grayscaleStartMinute: startMin,
       grayscaleEndMinute: endMin,
+      reminderIntervalSeconds: _reminderIntervalSeconds,
+      usageLimitSeconds: _usageLimitSeconds,
     );
     widget.onSave(app);
     Navigator.pop(context);
@@ -529,6 +552,112 @@ class _AddAppScreenState extends State<AddAppScreen> {
                     ),
                   )
                 : const SizedBox.shrink(),
+          ),
+
+          const SizedBox(height: 32),
+
+          // --- Usage Reminder section ---
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Usage Reminder',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8927C).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _reminderIntervalSeconds == 0
+                          ? 'Off'
+                          : 'Every ${_formatDuration(_reminderIntervalSeconds)}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFE8927C),
+                      ),
+                    ),
+                  ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Shows a brief nudge while you\'re in the app.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF9896B0), height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _reminderPresets.map((s) {
+              final selected = _reminderIntervalSeconds == s;
+              return _Chip(
+                label: s == 0 ? 'Off' : _formatDuration(s),
+                selected: selected,
+                selectedColor: const Color(0xFFE8927C),
+                onTap: () => setState(() => _reminderIntervalSeconds = s),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 32),
+
+          // --- Session Limit section ---
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Session Limit',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD474AA).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _usageLimitSeconds == 0
+                      ? 'Off'
+                      : '${_formatDuration(_usageLimitSeconds)} limit',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFD474AA),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Re-triggers the delay screen after this much use.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF9896B0), height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _limitPresets.map((s) {
+              final selected = _usageLimitSeconds == s;
+              return _Chip(
+                label: s == 0 ? 'Off' : _formatDuration(s),
+                selected: selected,
+                selectedColor: const Color(0xFFD474AA),
+                onTap: () => setState(() => _usageLimitSeconds = s),
+              );
+            }).toList(),
           ),
 
           const SizedBox(height: 48),

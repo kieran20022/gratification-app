@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../models/app_settings.dart';
 import '../models/restricted_app.dart';
 import '../services/app_service.dart';
@@ -57,8 +56,7 @@ class _DelayScreenState extends State<DelayScreen>
   Future<void> _onOpenApp() async {
     if (widget.fromService) {
       await AppService.recordAccessGranted(widget.app.packageName);
-      await AppService.openApp(); // moveTaskToBack — restricted app resurfaces
-      SystemNavigator.pop(); // fully close Gratify
+      await AppService.openApp(); // moveTaskToBack + finishAndRemoveTask on native side
     } else {
       if (mounted) Navigator.pop(context);
     }
@@ -66,9 +64,7 @@ class _DelayScreenState extends State<DelayScreen>
 
   Future<void> _onNeverMind() async {
     if (widget.fromService) {
-      // Go to Android home screen so the restricted app doesn't resurface.
-      await AppService.goHome();
-      if (mounted) Navigator.pop(context);
+      await AppService.goHome(); // startActivity(home) + finishAndRemoveTask on native side
     } else {
       if (mounted) Navigator.pop(context);
     }
