@@ -113,9 +113,10 @@ class MainActivity : FlutterActivity() {
     private fun handleIntent(intent: Intent?) {
         if (intent?.getBooleanExtra("SHOW_DELAY", false) != true) return
         val data = mapOf(
-            "packageName" to (intent.getStringExtra("PKG") ?: ""),
-            "appName"     to (intent.getStringExtra("APP_NAME") ?: ""),
-            "delaySeconds" to intent.getIntExtra("DELAY_SECS", 30)
+            "packageName"      to (intent.getStringExtra("PKG") ?: ""),
+            "appName"          to (intent.getStringExtra("APP_NAME") ?: ""),
+            "delaySeconds"     to intent.getIntExtra("DELAY_SECS", 30),
+            "fromSessionLimit" to intent.getBooleanExtra("FROM_SESSION_LIMIT", false)
         )
         if (methodChannel != null) {
             methodChannel!!.invokeMethod("onAppOpened", data)

@@ -44,8 +44,12 @@ class AppService {
       });
 
   static void setOnAppOpened(
-    Future<void> Function(String packageName, String appName, int delaySeconds)
-        handler,
+    Future<void> Function(
+      String packageName,
+      String appName,
+      int delaySeconds,
+      bool fromSessionLimit,
+    ) handler,
   ) {
     _ch.setMethodCallHandler((call) async {
       if (call.method == 'onAppOpened') {
@@ -54,6 +58,7 @@ class AppService {
           args['packageName'] as String,
           args['appName'] as String,
           args['delaySeconds'] as int,
+          args['fromSessionLimit'] as bool? ?? false,
         );
       }
     });
