@@ -22,15 +22,18 @@ class _GratifyAppState extends State<GratifyApp> {
   @override
   void initState() {
     super.initState();
-    AppService.setOnAppOpened(_handleAppOpened);
+    AppService.setOnAppOpened(
+      (pkg, name, delay, fromSessionLimit) =>
+          _handleAppOpened(pkg, name, delay, fromSessionLimit),
+    );
   }
 
   Future<void> _handleAppOpened(
     String packageName,
     String appName,
     int delaySeconds,
+    bool fromSessionLimit,
   ) async {
-    // Increment today's attempt count in storage
     final storage = StorageService();
     final apps = await storage.loadApps();
     final now = DateTime.now();
@@ -40,8 +43,11 @@ class _GratifyAppState extends State<GratifyApp> {
     final index = apps.indexWhere((a) => a.packageName == packageName);
     late RestrictedApp app;
     if (index >= 0) {
+      // Session-limit re-prompts don't count as new opens.
+      final newCount =
+          fromSessionLimit ? apps[index].dailyAttempts : apps[index].dailyAttempts + 1;
       app = apps[index].copyWith(
-        dailyAttempts: apps[index].dailyAttempts + 1,
+        dailyAttempts: newCount,
         lastAttemptDate: today,
       );
       apps[index] = app;
@@ -52,16 +58,25 @@ class _GratifyAppState extends State<GratifyApp> {
         name: appName,
         packageName: packageName,
         delaySeconds: delaySeconds,
-        dailyAttempts: 1,
+        dailyAttempts: fromSessionLimit ? 0 : 1,
         lastAttemptDate: today,
       );
     }
 
-    _navigatorKey.currentState?.push(
-      MaterialPageRoute(
+    final nav = _navigatorKey.currentState;
+    if (nav != null) {
+      nav.push(MaterialPageRoute(
         builder: (_) => DelayScreen(app: app, fromService: true),
-      ),
-    );
+      ));
+    } else {
+      // Navigator isn't mounted yet (onAppOpened arrived before first frame).
+      // Defer until after the frame so currentState is available.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigatorKey.currentState?.push(MaterialPageRoute(
+          builder: (_) => DelayScreen(app: app, fromService: true),
+        ));
+      });
+    }
   }
 
   @override
