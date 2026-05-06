@@ -2,6 +2,7 @@
 import '../models/restricted_app.dart';
 import '../widgets/app_icon_widget.dart';
 import 'app_picker_screen.dart';
+import 'reminder_settings_screen.dart';
 
 /// Screen for adding a new restricted app or editing an existing one.
 /// When [existing] is null, a new [RestrictedApp] is created on save;
@@ -605,6 +606,41 @@ class _AddAppScreenState extends State<AddAppScreen> {
                 onTap: () => setState(() => _reminderIntervalSeconds = s),
               );
             }).toList(),
+          ),
+
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ReminderSettingsScreen()),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFE8927C).withValues(alpha: 0.35),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.tune_rounded, size: 16, color: Color(0xFFE8927C)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Customize reminder appearance',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFE8927C),
+                      ),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFFE8927C)),
+                ],
+              ),
+            ),
           ),
 
           const SizedBox(height: 32),

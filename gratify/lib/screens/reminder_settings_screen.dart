@@ -13,10 +13,12 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   final _service = ReminderSettingsService();
   final _msgCtrl = TextEditingController();
 
-  ReminderAnimation _animation = ReminderAnimation.bounce;
-  ReminderPosition _position = ReminderPosition.center;
-  bool _loaded = false;
-  int _replayKey = 0;
+  ReminderAnimation _animation   = ReminderAnimation.bounce;
+  ReminderPosition  _position    = ReminderPosition.center;
+  BannerColorMode   _colorMode   = BannerColorMode.dark;
+  int               _customColor = ReminderSettings.defaultCustomColor;
+  bool              _loaded      = false;
+  int               _replayKey   = 0;
 
   @override
   void initState() {
@@ -29,18 +31,20 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     if (!mounted) return;
     setState(() {
       _msgCtrl.text = s.message;
-      _animation = s.animation;
-      _position = s.position;
-      _loaded = true;
+      _animation    = s.animation;
+      _position     = s.position;
+      _colorMode    = s.colorMode;
+      _customColor  = s.customColor;
+      _loaded       = true;
     });
   }
 
   ReminderSettings get _current => ReminderSettings(
-    message: _msgCtrl.text.trim().isEmpty
-        ? ReminderSettings.defaultMessage
-        : _msgCtrl.text,
-    animation: _animation,
-    position: _position,
+    message:     _msgCtrl.text.trim().isEmpty ? ReminderSettings.defaultMessage : _msgCtrl.text,
+    animation:   _animation,
+    position:    _position,
+    colorMode:   _colorMode,
+    customColor: _customColor,
   );
 
   void _save() => _service.save(_current);
@@ -55,17 +59,17 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   void _resetToDefaults() {
     setState(() {
       _msgCtrl.text = ReminderSettings.defaultMessage;
-      _animation = ReminderAnimation.bounce;
-      _position = ReminderPosition.center;
+      _animation    = ReminderAnimation.bounce;
+      _position     = ReminderPosition.center;
+      _colorMode    = BannerColorMode.dark;
+      _customColor  = ReminderSettings.defaultCustomColor;
     });
     _save();
   }
 
-  String get _previewMessage {
-    return _current.message
-        .replaceAll('{app}', 'TikTok')
-        .replaceAll('{time}', '5 minutes');
-  }
+  String get _previewMessage => _current.message
+      .replaceAll('{app}',  'TikTok')
+      .replaceAll('{time}', '5 minutes');
 
   @override
   Widget build(BuildContext context) {
@@ -78,14 +82,16 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                // ── Live preview ─────────────────────────────────────────────
+                // ── Preview ─────────────────────────────────────────────────
                 const _SectionLabel('Preview'),
                 const SizedBox(height: 14),
                 _BannerPreviewCard(
-                  key: ValueKey(_replayKey),
-                  message: _previewMessage,
-                  position: _position,
-                  animation: _animation,
+                  key:         ValueKey(_replayKey),
+                  message:     _previewMessage,
+                  position:    _position,
+                  animation:   _animation,
+                  colorMode:   _colorMode,
+                  customColor: _customColor,
                 ),
                 const SizedBox(height: 8),
                 Center(
@@ -107,11 +113,8 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                 const _SectionLabel('Animation'),
                 const SizedBox(height: 14),
                 _AnimationSelector(
-                  value: _animation,
-                  onChanged: (v) {
-                    setState(() => _animation = v);
-                    _save();
-                  },
+                  value:     _animation,
+                  onChanged: (v) { setState(() => _animation = v); _save(); },
                 ),
 
                 const SizedBox(height: 32),
@@ -122,11 +125,33 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                 const _SectionLabel('Position'),
                 const SizedBox(height: 14),
                 _PositionSelector(
-                  value: _position,
-                  onChanged: (v) {
-                    setState(() => _position = v);
-                    _save();
-                  },
+                  value:     _position,
+                  onChanged: (v) { setState(() => _position = v); _save(); },
+                ),
+
+                const SizedBox(height: 32),
+                Divider(color: cs.onSurface.withValues(alpha: 0.08)),
+                const SizedBox(height: 24),
+
+                // ── Color ────────────────────────────────────────────────────
+                const _SectionLabel('Popup Color'),
+                const SizedBox(height: 14),
+                _ColorModeSelector(
+                  value:     _colorMode,
+                  onChanged: (v) { setState(() => _colorMode = v); _save(); },
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  child: _colorMode == BannerColorMode.custom
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: _ColorGrid(
+                            selected:  _customColor,
+                            onChanged: (v) { setState(() => _customColor = v); _save(); },
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
 
                 const SizedBox(height: 32),
@@ -138,7 +163,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                 const SizedBox(height: 14),
                 _MessageField(
                   controller: _msgCtrl,
-                  onChanged: (_) => setState(() {}),
+                  onChanged:  (_) { setState(() {}); _save(); },
                 ),
                 const SizedBox(height: 10),
                 Container(
@@ -159,12 +184,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      _PlaceholderChip(tag: '{app}', desc: 'the app name'),
+                      _PlaceholderChip(tag: '{app}',  desc: 'the app name'),
                       const SizedBox(height: 4),
-                      _PlaceholderChip(
-                        tag: '{time}',
-                        desc: 'time elapsed (e.g. 5 minutes)',
-                      ),
+                      _PlaceholderChip(tag: '{time}', desc: 'time elapsed (e.g. 5 minutes)'),
                     ],
                   ),
                 ),
@@ -186,18 +208,38 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   }
 }
 
+// ── Color helpers ─────────────────────────────────────────────────────────────
+
+Color _bannerBgColor(BannerColorMode mode, int rgb) => switch (mode) {
+  BannerColorMode.dark   => const Color(0xFF1C1A2E),
+  BannerColorMode.bright => const Color(0xFFF8F7FF),
+  BannerColorMode.custom => Color(0xFF000000 | rgb),
+};
+
+Color _bannerTextColor(BannerColorMode mode, int rgb) => switch (mode) {
+  BannerColorMode.dark   => Colors.white,
+  BannerColorMode.bright => const Color(0xFF1C1A2E),
+  BannerColorMode.custom => Color(0xFF000000 | rgb).computeLuminance() > 0.45
+      ? const Color(0xFF1C1A2E)
+      : Colors.white,
+};
+
 // ── Banner preview card ───────────────────────────────────────────────────────
 
 class _BannerPreviewCard extends StatefulWidget {
-  final String message;
-  final ReminderPosition position;
+  final String            message;
+  final ReminderPosition  position;
   final ReminderAnimation animation;
+  final BannerColorMode   colorMode;
+  final int               customColor;
 
   const _BannerPreviewCard({
     super.key,
     required this.message,
     required this.position,
     required this.animation,
+    required this.colorMode,
+    required this.customColor,
   });
 
   @override
@@ -226,17 +268,16 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
   }
 
   void _playOnce() {
-    final duration = _animDuration(widget.animation);
-    _ctrl.duration = duration;
+    _ctrl.duration = _animDuration(widget.animation);
     _ctrl.forward();
   }
 
   Duration _animDuration(ReminderAnimation a) => switch (a) {
     ReminderAnimation.bounce => const Duration(milliseconds: 700),
-    ReminderAnimation.pulse => const Duration(milliseconds: 600),
-    ReminderAnimation.shake => const Duration(milliseconds: 500),
-    ReminderAnimation.fade => const Duration(milliseconds: 400),
-    ReminderAnimation.none => const Duration(milliseconds: 1),
+    ReminderAnimation.pulse  => const Duration(milliseconds: 600),
+    ReminderAnimation.shake  => const Duration(milliseconds: 500),
+    ReminderAnimation.fade   => const Duration(milliseconds: 400),
+    ReminderAnimation.none   => const Duration(milliseconds: 1),
   };
 
   @override
@@ -247,9 +288,8 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final alignment = switch (widget.position) {
-      ReminderPosition.top => Alignment.topCenter,
+      ReminderPosition.top    => Alignment.topCenter,
       ReminderPosition.center => Alignment.center,
       ReminderPosition.bottom => Alignment.bottomCenter,
     };
@@ -257,9 +297,8 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
     return Container(
       height: 200,
       decoration: BoxDecoration(
-        color: cs.surface,
+        color: const Color(0xFFEDE9F8),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.onSurface.withValues(alpha: 0.07)),
       ),
       child: Stack(
         alignment: alignment,
@@ -276,7 +315,11 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
                   child: child,
                 ),
               ),
-              child: _BannerPill(message: widget.message),
+              child: _BannerPill(
+                message:   widget.message,
+                bgColor:   _bannerBgColor(widget.colorMode, widget.customColor),
+                textColor: _bannerTextColor(widget.colorMode, widget.customColor),
+              ),
             ),
           ),
         ],
@@ -287,17 +330,11 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
   Matrix4 _buildTransform(ReminderAnimation anim, double t) {
     return switch (anim) {
       ReminderAnimation.bounce => () {
-        // spring: 0→1.12→0.94→1.04→1.0
         double scale;
-        if (t < 0.30) {
-          scale = 1.0 + (t / 0.30) * 0.12;
-        } else if (t < 0.55) {
-          scale = 1.12 - ((t - 0.30) / 0.25) * 0.18;
-        } else if (t < 0.78) {
-          scale = 0.94 + ((t - 0.55) / 0.23) * 0.10;
-        } else {
-          scale = 1.04 - ((t - 0.78) / 0.22) * 0.04;
-        }
+        if (t < 0.30)      scale = 1.0 + (t / 0.30) * 0.12;
+        else if (t < 0.55) scale = 1.12 - ((t - 0.30) / 0.25) * 0.18;
+        else if (t < 0.78) scale = 0.94 + ((t - 0.55) / 0.23) * 0.10;
+        else               scale = 1.04 - ((t - 0.78) / 0.22) * 0.04;
         return Matrix4.identity()..scale(scale, scale);
       }(),
       ReminderAnimation.pulse => () {
@@ -306,17 +343,15 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
       }(),
       ReminderAnimation.shake => () {
         const amp = 8.0;
-        final x =
-            amp *
-            (t < 0.2
-                ? t / 0.2
-                : t < 0.4
-                ? 1 - (t - 0.2) / 0.2 * 2
-                : t < 0.6
-                ? -1 + (t - 0.4) / 0.2 * 2
-                : t < 0.8
-                ? (1 - (t - 0.6) / 0.2) * 1
-                : 0.0);
+        final x = amp * (t < 0.2
+            ? t / 0.2
+            : t < 0.4
+            ? 1 - (t - 0.2) / 0.2 * 2
+            : t < 0.6
+            ? -1 + (t - 0.4) / 0.2 * 2
+            : t < 0.8
+            ? (1 - (t - 0.6) / 0.2) * 1
+            : 0.0);
         return Matrix4.identity()..translate(x, 0.0);
       }(),
       _ => Matrix4.identity(),
@@ -326,24 +361,31 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
   double _buildOpacity(ReminderAnimation anim, double t) => switch (anim) {
     ReminderAnimation.fade => t < 0.5 ? t / 0.5 : 1.0,
     ReminderAnimation.none => 1.0,
-    _ => t == 0 ? 0.0 : 1.0,
+    _                      => t == 0 ? 0.0 : 1.0,
   };
 }
 
 class _BannerPill extends StatelessWidget {
   final String message;
-  const _BannerPill({required this.message});
+  final Color  bgColor;
+  final Color  textColor;
+
+  const _BannerPill({
+    required this.message,
+    required this.bgColor,
+    required this.textColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1A2E).withValues(alpha: 0.92),
+        color: bgColor.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(100),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -351,8 +393,8 @@ class _BannerPill extends StatelessWidget {
       ),
       child: Text(
         message,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: textColor,
           fontSize: 13,
           fontWeight: FontWeight.w700,
         ),
@@ -370,10 +412,10 @@ class _AnimationSelector extends StatelessWidget {
 
   static const _options = [
     (ReminderAnimation.bounce, Icons.sports_basketball_outlined, 'Bounce'),
-    (ReminderAnimation.pulse, Icons.radio_button_checked, 'Pulse'),
-    (ReminderAnimation.shake, Icons.swap_horiz_rounded, 'Shake'),
-    (ReminderAnimation.fade, Icons.opacity, 'Fade'),
-    (ReminderAnimation.none, Icons.remove_circle_outline, 'None'),
+    (ReminderAnimation.pulse,  Icons.radio_button_checked,       'Pulse'),
+    (ReminderAnimation.shake,  Icons.swap_horiz_rounded,         'Shake'),
+    (ReminderAnimation.fade,   Icons.opacity,                    'Fade'),
+    (ReminderAnimation.none,   Icons.remove_circle_outline,      'None'),
   ];
 
   @override
@@ -396,33 +438,22 @@ class _AnimationSelector extends StatelessWidget {
                     : cs.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: selected
-                      ? const Color(0xFFE8927C)
-                      : cs.onSurface.withValues(alpha: 0.1),
+                  color: selected ? const Color(0xFFE8927C) : cs.onSurface.withValues(alpha: 0.1),
                   width: selected ? 1.5 : 1,
                 ),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    icon,
-                    size: 20,
-                    color: selected
-                        ? const Color(0xFFE8927C)
-                        : const Color(0xFF9896B0),
-                  ),
+                  Icon(icon, size: 20,
+                      color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0)),
                   const SizedBox(height: 4),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: selected
-                          ? const Color(0xFFE8927C)
-                          : const Color(0xFF9896B0),
-                    ),
-                  ),
+                  Text(label,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0),
+                      )),
                 ],
               ),
             ),
@@ -439,7 +470,7 @@ class _PositionSelector extends StatelessWidget {
   const _PositionSelector({required this.value, required this.onChanged});
 
   static const _options = [
-    (ReminderPosition.top, Icons.vertical_align_top, 'Top'),
+    (ReminderPosition.top,    Icons.vertical_align_top,    'Top'),
     (ReminderPosition.center, Icons.vertical_align_center, 'Center'),
     (ReminderPosition.bottom, Icons.vertical_align_bottom, 'Bottom'),
   ];
@@ -464,36 +495,143 @@ class _PositionSelector extends StatelessWidget {
                     : cs.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: selected
-                      ? const Color(0xFFE8927C)
-                      : cs.onSurface.withValues(alpha: 0.1),
+                  color: selected ? const Color(0xFFE8927C) : cs.onSurface.withValues(alpha: 0.1),
                   width: selected ? 1.5 : 1,
                 ),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    icon,
-                    size: 22,
-                    color: selected
-                        ? const Color(0xFFE8927C)
-                        : const Color(0xFF9896B0),
-                  ),
+                  Icon(icon, size: 22,
+                      color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0)),
                   const SizedBox(height: 5),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: selected
-                          ? const Color(0xFFE8927C)
-                          : const Color(0xFF9896B0),
-                    ),
-                  ),
+                  Text(label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0),
+                      )),
                 ],
               ),
             ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ColorModeSelector extends StatelessWidget {
+  final BannerColorMode value;
+  final ValueChanged<BannerColorMode> onChanged;
+  const _ColorModeSelector({required this.value, required this.onChanged});
+
+  static const _options = [
+    (BannerColorMode.dark,   Icons.dark_mode_outlined,  'Dark'),
+    (BannerColorMode.bright, Icons.light_mode_outlined, 'Bright'),
+    (BannerColorMode.custom, Icons.palette_outlined,    'Custom'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: _options.map((opt) {
+        final (mode, icon, label) = opt;
+        final selected = value == mode;
+        return Expanded(
+          child: GestureDetector(
+            onTap: () => onChanged(mode),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFFE8927C).withValues(alpha: 0.15)
+                    : cs.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected ? const Color(0xFFE8927C) : cs.onSurface.withValues(alpha: 0.1),
+                  width: selected ? 1.5 : 1,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 22,
+                      color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0)),
+                  const SizedBox(height: 5),
+                  Text(label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0),
+                      )),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ColorGrid extends StatelessWidget {
+  final int selected;
+  final ValueChanged<int> onChanged;
+  const _ColorGrid({required this.selected, required this.onChanged});
+
+  static const _presets = [
+    0x7B6FD4, // purple (default)
+    0x6BBFB5, // teal
+    0xE8927C, // orange
+    0x4A90E2, // blue
+    0xD474AA, // pink
+    0xE25C5C, // red
+    0x1C1A2E, // dark navy
+    0x2E7D32, // forest green
+    0xF59E0B, // amber
+    0x6B7280, // slate gray
+    0x0891B2, // cyan
+    0x92400E, // brown
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: _presets.map((rgb) {
+        final isSelected  = selected == rgb;
+        final color       = Color(0xFF000000 | rgb);
+        final checkColor  = color.computeLuminance() > 0.45
+            ? Colors.black87
+            : Colors.white;
+        return GestureDetector(
+          onTap: () => onChanged(rgb),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? const Color(0xFFE8927C) : Colors.transparent,
+                width: 2.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: isSelected ? 0.5 : 0.2),
+                  blurRadius: isSelected ? 10 : 4,
+                ),
+              ],
+            ),
+            child: isSelected
+                ? Icon(Icons.check_rounded, size: 18, color: checkColor)
+                : null,
           ),
         );
       }).toList(),
@@ -505,7 +643,7 @@ class _PositionSelector extends StatelessWidget {
 
 class _MessageField extends StatelessWidget {
   final TextEditingController controller;
-  final ValueChanged<String> onChanged;
+  final ValueChanged<String>  onChanged;
   const _MessageField({required this.controller, required this.onChanged});
 
   @override
@@ -513,8 +651,8 @@ class _MessageField extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return TextField(
       controller: controller,
-      maxLines: 3,
-      onChanged: onChanged,
+      maxLines:   3,
+      onChanged:  onChanged,
       style: TextStyle(fontSize: 14, color: cs.onSurface, height: 1.5),
       decoration: InputDecoration(
         hintText: ReminderSettings.defaultMessage,
@@ -563,10 +701,8 @@ class _PlaceholderChip extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          '→  $desc',
-          style: const TextStyle(fontSize: 12, color: Color(0xFF9896B0)),
-        ),
+        Text('→  $desc',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF9896B0))),
       ],
     );
   }

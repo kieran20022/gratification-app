@@ -3,7 +3,6 @@ import '../models/app_settings.dart';
 import '../services/settings_service.dart';
 import '../widgets/app_icon_widget.dart';
 import '../widgets/countdown_ring.dart';
-import 'reminder_settings_screen.dart';
 
 // Scale used when rendering text inside the small preview card.
 const _previewScale = 140.0 / 220.0;
@@ -297,25 +296,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChangeEnd: (_) => _save(),
                     ),
                   ],
-                ),
-
-                const SizedBox(height: 32),
-                Divider(color: cs.onSurface.withValues(alpha: 0.08)),
-                const SizedBox(height: 24),
-
-                // ── Usage Reminder ────────────────────────────────────────────
-                const _SectionLabel('Usage Reminder'),
-                const SizedBox(height: 14),
-                _NavRow(
-                  icon: Icons.notifications_outlined,
-                  title: 'Reminder Settings',
-                  subtitle: 'Customize the banner shown while using a restricted app.',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ReminderSettingsScreen(),
-                    ),
-                  ),
                 ),
 
                 const SizedBox(height: 40),
@@ -931,75 +911,6 @@ class _ToggleRow extends StatelessWidget {
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NavRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _NavRow({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8927C).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 18, color: const Color(0xFFE8927C)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF9896B0),
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded,
-                size: 20, color: cs.onSurface.withValues(alpha: 0.3)),
-          ],
-        ),
       ),
     );
   }

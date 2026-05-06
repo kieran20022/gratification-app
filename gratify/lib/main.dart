@@ -57,11 +57,20 @@ class _GratifyAppState extends State<GratifyApp> {
       );
     }
 
-    _navigatorKey.currentState?.push(
-      MaterialPageRoute(
+    final nav = _navigatorKey.currentState;
+    if (nav != null) {
+      nav.push(MaterialPageRoute(
         builder: (_) => DelayScreen(app: app, fromService: true),
-      ),
-    );
+      ));
+    } else {
+      // Navigator isn't mounted yet (onAppOpened arrived before first frame).
+      // Defer until after the frame so currentState is available.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigatorKey.currentState?.push(MaterialPageRoute(
+          builder: (_) => DelayScreen(app: app, fromService: true),
+        ));
+      });
+    }
   }
 
   @override

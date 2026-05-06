@@ -45,6 +45,12 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
     private var currentOverlayPackage: String? = null
     private var overlayView: View? = null
+    private var activeBannerContainer: View? = null
+    // Timestamp of the last wm.addView call for a reminder banner.
+    // Used to suppress spurious home-package accessibility events that some devices
+    // fire when a TYPE_ACCESSIBILITY_OVERLAY window is added, which would otherwise
+    // clear activeRestrictedSessions and cause triggerDelay to fire.
+    private var lastBannerAddedAt: Long = 0L
 
     private val homePackages: Set<String> by lazy {
         val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
@@ -77,9 +83,14 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         if (pkg == packageName) return
 
         if (homePackages.contains(pkg)) {
-            cancelAllSessionTimers()
-            activeRestrictedSessions.clear()
-            hideOverlayIfActive()
+            // Some devices fire a spurious home-package event immediately after a
+            // TYPE_ACCESSIBILITY_OVERLAY window is added. Ignore it if we just showed
+            // a reminder banner (real home navigation takes longer than 600 ms).
+            if (System.currentTimeMillis() - lastBannerAddedAt > 600L) {
+                cancelAllSessionTimers()
+                activeRestrictedSessions.clear()
+                hideOverlayIfActive()
+            }
             return
         }
 
@@ -121,15 +132,30 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
     private fun startSessionTimer(pkg: String, app: RestrictedAppInfo) {
         if (sessionStartTimes.containsKey(pkg)) return
-        sessionStartTimes[pkg] = System.currentTimeMillis()
-        if (app.reminderIntervalSeconds > 0) scheduleReminder(pkg, app, 1)
-        if (app.usageLimitSeconds > 0) scheduleUsageLimit(pkg, app)
+        // Capture now once so both timers compute delays from the same reference.
+        // Without this, scheduleUsageLimit would call currentTimeMillis() a few ms
+        // later than scheduleReminder, giving the limit a slightly shorter delay and
+        // causing it to fire before the reminder when both intervals are equal.
+        val now = System.currentTimeMillis()
+        sessionStartTimes[pkg] = now
+        if (app.reminderIntervalSeconds > 0) scheduleReminder(pkg, app, 1, scheduledAt = now)
+        if (app.usageLimitSeconds > 0) scheduleUsageLimit(pkg, app, scheduledAt = now)
     }
 
-    private fun scheduleReminder(pkg: String, app: RestrictedAppInfo, count: Int) {
+    private fun scheduleReminder(
+        pkg: String,
+        app: RestrictedAppInfo,
+        count: Int,
+        scheduledAt: Long = System.currentTimeMillis(),
+    ) {
+        // Skip reminders that would fire at or after the usage limit — the delay screen
+        // already communicates the session end; showing a banner simultaneously is confusing.
+        if (app.usageLimitSeconds > 0 &&
+                count.toLong() * app.reminderIntervalSeconds >= app.usageLimitSeconds) return
+
         val startTime = sessionStartTimes[pkg] ?: return
         val fireAt = startTime + count.toLong() * app.reminderIntervalSeconds * 1_000L
-        val delay = fireAt - System.currentTimeMillis()
+        val delay = fireAt - scheduledAt
         if (delay < 0) return
 
         val runnable = Runnable {
@@ -141,10 +167,14 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         handler.postDelayed(runnable, delay)
     }
 
-    private fun scheduleUsageLimit(pkg: String, app: RestrictedAppInfo) {
+    private fun scheduleUsageLimit(
+        pkg: String,
+        app: RestrictedAppInfo,
+        scheduledAt: Long = System.currentTimeMillis(),
+    ) {
         val startTime = sessionStartTimes[pkg] ?: return
         val fireAt = startTime + app.usageLimitSeconds * 1_000L
-        val delay = fireAt - System.currentTimeMillis()
+        val delay = fireAt - scheduledAt
 
         val runnable = Runnable {
             if (!activeRestrictedSessions.contains(pkg)) return@Runnable
@@ -152,6 +182,7 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             sessionStartTimes.remove(pkg)
             pendingReminderRunnables.remove(pkg)?.let { handler.removeCallbacks(it) }
             pendingLimitRunnables.remove(pkg)
+            dismissActiveBanner()
             triggerDelay(pkg, app)
         }
         pendingLimitRunnables[pkg] = runnable
@@ -164,6 +195,14 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         pendingReminderRunnables.clear()
         pendingLimitRunnables.clear()
         sessionStartTimes.clear()
+    }
+
+    private fun dismissActiveBanner() {
+        val container = activeBannerContainer ?: return
+        activeBannerContainer = null
+        try {
+            getSystemService(WindowManager::class.java)?.removeView(container)
+        } catch (_: Exception) {}
     }
 
     private fun triggerDelay(pkg: String, app: RestrictedAppInfo) {
@@ -197,14 +236,37 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         // Extra padding around the pill so scale animations never clip rounded corners.
         val paddingPx = (50 * resources.displayMetrics.density).toInt()
 
+        val colorModeIdx = flutterPrefs.getInt("flutter.reminder_color_mode", 0)
+        val customRgb    = flutterPrefs.getInt("flutter.reminder_custom_color", 0x7B6FD4)
+        val bannerBgColor: Int
+        val bannerTextColor: Int
+        when (colorModeIdx) {
+            1 -> { // bright
+                bannerBgColor   = Color.argb(235, 248, 247, 255)
+                bannerTextColor = Color.rgb(28, 26, 46)
+            }
+            2 -> { // custom
+                val r = (customRgb shr 16) and 0xFF
+                val g = (customRgb shr 8)  and 0xFF
+                val b = customRgb          and 0xFF
+                val luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+                bannerBgColor   = Color.argb(235, r, g, b)
+                bannerTextColor = if (luminance > 0.45) Color.rgb(28, 26, 46) else Color.WHITE
+            }
+            else -> { // dark (default)
+                bannerBgColor   = Color.argb(235, 28, 26, 46)
+                bannerTextColor = Color.WHITE
+            }
+        }
+
         val bg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 200f
-            setColor(Color.argb(235, 28, 26, 46))
+            setColor(bannerBgColor)
         }
         val tv = TextView(this).apply {
             text = message
-            setTextColor(Color.WHITE)
+            setTextColor(bannerTextColor)
             textSize = 14f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(64, 32, 64, 32)
@@ -237,7 +299,10 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         }
 
         try {
+            dismissActiveBanner()
+            lastBannerAddedAt = System.currentTimeMillis()
             wm.addView(container, params)
+            activeBannerContainer = container
 
             when (animIdx) {
                 4 -> { /* none — container appears instantly at full size */ }
@@ -315,6 +380,7 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             handler.postDelayed({ exit.start() }, 3_200)
             handler.postDelayed({
                 try { wm.removeView(container) } catch (_: Exception) {}
+                if (activeBannerContainer === container) activeBannerContainer = null
             }, 3_460)
 
         } catch (_: Exception) {}
