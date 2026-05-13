@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import '../models/reminder_settings.dart';
 import '../services/reminder_settings_service.dart';
+import '../services/app_service.dart';
 
 class ReminderSettingsScreen extends StatefulWidget {
-  const ReminderSettingsScreen({super.key});
+  final String? previewAppName;
+  final int?    previewIntervalSeconds;
+
+  const ReminderSettingsScreen({
+    super.key,
+    this.previewAppName,
+    this.previewIntervalSeconds,
+  });
 
   @override
   State<ReminderSettingsScreen> createState() => _ReminderSettingsScreenState();
@@ -13,12 +21,10 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   final _service = ReminderSettingsService();
   final _msgCtrl = TextEditingController();
 
-  ReminderAnimation _animation   = ReminderAnimation.bounce;
-  ReminderPosition  _position    = ReminderPosition.center;
-  BannerColorMode   _colorMode   = BannerColorMode.dark;
-  int               _customColor = ReminderSettings.defaultCustomColor;
-  bool              _loaded      = false;
-  int               _replayKey   = 0;
+  ReminderPosition _position    = ReminderPosition.center;
+  BannerColorMode  _colorMode   = BannerColorMode.dark;
+  int              _customColor = ReminderSettings.defaultCustomColor;
+  bool             _loaded      = false;
 
   @override
   void initState() {
@@ -31,7 +37,6 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     if (!mounted) return;
     setState(() {
       _msgCtrl.text = s.message;
-      _animation    = s.animation;
       _position     = s.position;
       _colorMode    = s.colorMode;
       _customColor  = s.customColor;
@@ -41,7 +46,6 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
 
   ReminderSettings get _current => ReminderSettings(
     message:     _msgCtrl.text.trim().isEmpty ? ReminderSettings.defaultMessage : _msgCtrl.text,
-    animation:   _animation,
     position:    _position,
     colorMode:   _colorMode,
     customColor: _customColor,
@@ -59,7 +63,6 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   void _resetToDefaults() {
     setState(() {
       _msgCtrl.text = ReminderSettings.defaultMessage;
-      _animation    = ReminderAnimation.bounce;
       _position     = ReminderPosition.center;
       _colorMode    = BannerColorMode.dark;
       _customColor  = ReminderSettings.defaultCustomColor;
@@ -68,8 +71,16 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   }
 
   String get _previewMessage => _current.message
-      .replaceAll('{app}',  'TikTok')
-      .replaceAll('{time}', '5 minutes');
+      .replaceAll('{app}',  widget.previewAppName ?? 'TikTok')
+      .replaceAll('{time}', widget.previewIntervalSeconds != null
+          ? _formatSeconds(widget.previewIntervalSeconds!)
+          : '5 minutes');
+
+  String _formatSeconds(int s) {
+    if (s < 60) return '$s ${s == 1 ? "second" : "seconds"}';
+    final m = s ~/ 60;
+    return '$m ${m == 1 ? "minute" : "minutes"}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -86,35 +97,25 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                 const _SectionLabel('Preview'),
                 const SizedBox(height: 14),
                 _BannerPreviewCard(
-                  key:         ValueKey(_replayKey),
-                  message:     _previewMessage,
-                  position:    _position,
-                  animation:   _animation,
-                  colorMode:   _colorMode,
+                  message:    _previewMessage,
+                  position:   _position,
+                  colorMode:  _colorMode,
                   customColor: _customColor,
                 ),
                 const SizedBox(height: 8),
                 Center(
                   child: TextButton.icon(
-                    onPressed: () => setState(() => _replayKey++),
-                    icon: const Icon(Icons.replay_rounded, size: 16),
-                    label: const Text('Replay'),
+                    onPressed: () {
+                      final appName = widget.previewAppName ?? 'TikTok';
+                      final secs    = widget.previewIntervalSeconds ?? 300;
+                      AppService.previewReminder(appName, secs);
+                    },
+                    icon: const Icon(Icons.phone_android_rounded, size: 16),
+                    label: const Text('Preview on device'),
                     style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFFE8927C),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 32),
-                Divider(color: cs.onSurface.withValues(alpha: 0.08)),
-                const SizedBox(height: 24),
-
-                // ── Animation ────────────────────────────────────────────────
-                const _SectionLabel('Animation'),
-                const SizedBox(height: 14),
-                _AnimationSelector(
-                  value:     _animation,
-                  onChanged: (v) { setState(() => _animation = v); _save(); },
                 ),
 
                 const SizedBox(height: 32),
@@ -226,76 +227,29 @@ Color _bannerTextColor(BannerColorMode mode, int rgb) => switch (mode) {
 
 // ── Banner preview card ───────────────────────────────────────────────────────
 
-class _BannerPreviewCard extends StatefulWidget {
-  final String            message;
-  final ReminderPosition  position;
-  final ReminderAnimation animation;
-  final BannerColorMode   colorMode;
-  final int               customColor;
+class _BannerPreviewCard extends StatelessWidget {
+  final String           message;
+  final ReminderPosition position;
+  final BannerColorMode  colorMode;
+  final int              customColor;
 
   const _BannerPreviewCard({
-    super.key,
     required this.message,
     required this.position,
-    required this.animation,
     required this.colorMode,
     required this.customColor,
   });
 
   @override
-  State<_BannerPreviewCard> createState() => _BannerPreviewCardState();
-}
-
-class _BannerPreviewCardState extends State<_BannerPreviewCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this);
-    _playOnce();
-  }
-
-  @override
-  void didUpdateWidget(_BannerPreviewCard old) {
-    super.didUpdateWidget(old);
-    if (old.animation != widget.animation || old.position != widget.position) {
-      _ctrl.stop();
-      _ctrl.reset();
-      _playOnce();
-    }
-  }
-
-  void _playOnce() {
-    _ctrl.duration = _animDuration(widget.animation);
-    _ctrl.forward();
-  }
-
-  Duration _animDuration(ReminderAnimation a) => switch (a) {
-    ReminderAnimation.bounce => const Duration(milliseconds: 700),
-    ReminderAnimation.pulse  => const Duration(milliseconds: 600),
-    ReminderAnimation.shake  => const Duration(milliseconds: 500),
-    ReminderAnimation.fade   => const Duration(milliseconds: 400),
-    ReminderAnimation.none   => const Duration(milliseconds: 1),
-  };
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final alignment = switch (widget.position) {
+    final alignment = switch (position) {
       ReminderPosition.top    => Alignment.topCenter,
       ReminderPosition.center => Alignment.center,
       ReminderPosition.bottom => Alignment.bottomCenter,
     };
 
     return Container(
-      height: 200,
+      height: 160,
       decoration: BoxDecoration(
         color: const Color(0xFFEDE9F8),
         borderRadius: BorderRadius.circular(20),
@@ -305,64 +259,16 @@ class _BannerPreviewCardState extends State<_BannerPreviewCard>
         children: [
           Padding(
             padding: const EdgeInsets.all(20),
-            child: AnimatedBuilder(
-              animation: _ctrl,
-              builder: (context, child) => Transform(
-                alignment: Alignment.center,
-                transform: _buildTransform(widget.animation, _ctrl.value),
-                child: Opacity(
-                  opacity: _buildOpacity(widget.animation, _ctrl.value),
-                  child: child,
-                ),
-              ),
-              child: _BannerPill(
-                message:   widget.message,
-                bgColor:   _bannerBgColor(widget.colorMode, widget.customColor),
-                textColor: _bannerTextColor(widget.colorMode, widget.customColor),
-              ),
+            child: _BannerPill(
+              message:   message,
+              bgColor:   _bannerBgColor(colorMode, customColor),
+              textColor: _bannerTextColor(colorMode, customColor),
             ),
           ),
         ],
       ),
     );
   }
-
-  Matrix4 _buildTransform(ReminderAnimation anim, double t) {
-    return switch (anim) {
-      ReminderAnimation.bounce => () {
-        double scale;
-        if (t < 0.30)      scale = 1.0 + (t / 0.30) * 0.12;
-        else if (t < 0.55) scale = 1.12 - ((t - 0.30) / 0.25) * 0.18;
-        else if (t < 0.78) scale = 0.94 + ((t - 0.55) / 0.23) * 0.10;
-        else               scale = 1.04 - ((t - 0.78) / 0.22) * 0.04;
-        return Matrix4.identity()..scale(scale, scale);
-      }(),
-      ReminderAnimation.pulse => () {
-        final s = 1.0 + (0.08 * (t < 0.5 ? t / 0.5 : (1 - t) / 0.5));
-        return Matrix4.identity()..scale(s, s);
-      }(),
-      ReminderAnimation.shake => () {
-        const amp = 8.0;
-        final x = amp * (t < 0.2
-            ? t / 0.2
-            : t < 0.4
-            ? 1 - (t - 0.2) / 0.2 * 2
-            : t < 0.6
-            ? -1 + (t - 0.4) / 0.2 * 2
-            : t < 0.8
-            ? (1 - (t - 0.6) / 0.2) * 1
-            : 0.0);
-        return Matrix4.identity()..translate(x, 0.0);
-      }(),
-      _ => Matrix4.identity(),
-    };
-  }
-
-  double _buildOpacity(ReminderAnimation anim, double t) => switch (anim) {
-    ReminderAnimation.fade => t < 0.5 ? t / 0.5 : 1.0,
-    ReminderAnimation.none => 1.0,
-    _                      => t == 0 ? 0.0 : 1.0,
-  };
 }
 
 class _BannerPill extends StatelessWidget {
@@ -404,65 +310,6 @@ class _BannerPill extends StatelessWidget {
 }
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
-
-class _AnimationSelector extends StatelessWidget {
-  final ReminderAnimation value;
-  final ValueChanged<ReminderAnimation> onChanged;
-  const _AnimationSelector({required this.value, required this.onChanged});
-
-  static const _options = [
-    (ReminderAnimation.bounce, Icons.sports_basketball_outlined, 'Bounce'),
-    (ReminderAnimation.pulse,  Icons.radio_button_checked,       'Pulse'),
-    (ReminderAnimation.shake,  Icons.swap_horiz_rounded,         'Shake'),
-    (ReminderAnimation.fade,   Icons.opacity,                    'Fade'),
-    (ReminderAnimation.none,   Icons.remove_circle_outline,      'None'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      children: _options.map((opt) {
-        final (style, icon, label) = opt;
-        final selected = value == style;
-        return Expanded(
-          child: GestureDetector(
-            onTap: () => onChanged(style),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFFE8927C).withValues(alpha: 0.15)
-                    : cs.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: selected ? const Color(0xFFE8927C) : cs.onSurface.withValues(alpha: 0.1),
-                  width: selected ? 1.5 : 1,
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 20,
-                      color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0)),
-                  const SizedBox(height: 4),
-                  Text(label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0),
-                      )),
-                ],
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
 
 class _PositionSelector extends StatelessWidget {
   final ReminderPosition value;

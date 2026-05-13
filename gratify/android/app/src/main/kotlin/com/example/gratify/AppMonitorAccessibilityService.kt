@@ -1,10 +1,7 @@
 package com.example.gratify
 
 import android.accessibilityservice.AccessibilityService
-import android.animation.AnimatorSet
-import android.animation.Keyframe
-import android.animation.ObjectAnimator
-import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -20,8 +17,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
-import android.view.animation.AccelerateInterpolator
-import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
 import org.json.JSONArray
@@ -84,10 +79,10 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         if (pkg == packageName) return
 
         if (homePackages.contains(pkg)) {
-            // Some devices fire a spurious home-package event immediately after a
-            // TYPE_ACCESSIBILITY_OVERLAY window is added. Ignore it if we just showed
-            // a reminder banner (real home navigation takes longer than 600 ms).
-            if (System.currentTimeMillis() - lastBannerAddedAt > 600L) {
+            // Suppress spurious home-package events for 5 500 ms — past the banner's
+            // own removal at 5 260 ms — so a delayed spurious event can never clear
+            // the session while the banner is still on screen.
+            if (System.currentTimeMillis() - lastBannerAddedAt > 5_500L) {
                 cancelAllSessionTimers()
                 activeRestrictedSessions.clear()
                 hideOverlayIfActive()
@@ -189,9 +184,15 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             sessionStartTimes.remove(pkg)
             pendingReminderRunnables.remove(pkg)?.let { handler.removeCallbacks(it) }
             pendingLimitRunnables.remove(pkg)
-            dismissActiveBanner()
             pendingDelayPackages.add(pkg)
-            triggerDelay(pkg, app, fromSessionLimit = true)
+            // If a reminder banner fired recently, let it finish its 3-second minimum
+            // display before force-dismissing it and showing the delay screen.
+            val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
+            val wait = if (activeBannerContainer != null && bannerAge < 3_000L) 3_000L - bannerAge else 0L
+            handler.postDelayed({
+                dismissActiveBanner(force = true)
+                triggerDelay(pkg, app, fromSessionLimit = true)
+            }, wait)
         }
         pendingLimitRunnables[pkg] = runnable
         handler.postDelayed(runnable, delay.coerceAtLeast(0))
@@ -206,8 +207,11 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         pendingDelayPackages.clear()
     }
 
-    private fun dismissActiveBanner() {
+    // Removes the active banner. Non-forced calls are ignored if the banner has been
+    // visible for less than 3 seconds, ensuring a minimum readable display time.
+    private fun dismissActiveBanner(force: Boolean = false) {
         val container = activeBannerContainer ?: return
+        if (!force && System.currentTimeMillis() - lastBannerAddedAt < 3_000L) return
         activeBannerContainer = null
         try {
             getSystemService(WindowManager::class.java)?.removeView(container)
@@ -226,11 +230,16 @@ class AppMonitorAccessibilityService : AccessibilityService() {
     }
 
     private fun showReminderBanner(appName: String, elapsedSeconds: Int) {
+        // If a banner is already within its 3-second minimum display window, skip this
+        // call rather than flash a replacement on screen.
+        if (activeBannerContainer != null && System.currentTimeMillis() - lastBannerAddedAt < 3_000L) return
+        dismissActiveBanner()
         val wm = getSystemService(WindowManager::class.java) ?: return
 
         val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val animIdx     = flutterPrefs.getInt("flutter.reminder_animation", 0)
-        val posIdx      = flutterPrefs.getInt("flutter.reminder_position",  1)
+        // Flutter's shared_preferences stores Dart ints as Long on Android.
+        // getInt() on a Long-typed key throws ClassCastException; use getLong().toInt().
+        val posIdx      = flutterPrefs.getLong("flutter.reminder_position", 1L).toInt()
         val msgTemplate = flutterPrefs.getString("flutter.reminder_message", null)
                         ?: "You've been in {app} for {time}"
 
@@ -245,8 +254,8 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
         val paddingPx = (50 * resources.displayMetrics.density).toInt()
 
-        val colorModeIdx = flutterPrefs.getInt("flutter.reminder_color_mode", 0)
-        val customRgb    = flutterPrefs.getInt("flutter.reminder_custom_color", 0x7B6FD4)
+        val colorModeIdx = flutterPrefs.getLong("flutter.reminder_color_mode", 0L).toInt()
+        val customRgb    = flutterPrefs.getLong("flutter.reminder_custom_color", 0x7B6FD4L).toInt()
         val bannerBgColor: Int
         val bannerTextColor: Int
         when (colorModeIdx) {
@@ -309,87 +318,31 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             if (posIdx != 1) y = yOffsetPx
         }
 
+        // ValueAnimator drives animation via Choreographer and never calls
+        // isAttachedToWindow(), so it works immediately after wm.addView() without
+        // needing post{} or attachment guards that ObjectAnimator/AnimatorSet require.
+        container.alpha = 0f
+
         try {
             lastBannerAddedAt = System.currentTimeMillis()
             wm.addView(container, params)
             activeBannerContainer = container
 
-            when (animIdx) {
-                4 -> { /* none */ }
+            ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 350
+                addUpdateListener { container.alpha = animatedValue as Float }
+            }.start()
 
-                3 -> {
-                    container.alpha = 0f
-                    ObjectAnimator.ofFloat(container, "alpha", 0f, 1f).apply {
-                        duration     = 400
-                        interpolator = DecelerateInterpolator()
-                    }.start()
-                }
-
-                else -> {
-                    container.alpha        = 0f
-                    container.scaleX       = 0.82f
-                    container.scaleY       = 0.82f
-                    container.translationY = 40f
-                    AnimatorSet().apply {
-                        playTogether(
-                            ObjectAnimator.ofFloat(container, "alpha",        0f,    1f),
-                            ObjectAnimator.ofFloat(container, "scaleX",       0.82f, 1f),
-                            ObjectAnimator.ofFloat(container, "scaleY",       0.82f, 1f),
-                            ObjectAnimator.ofFloat(container, "translationY", 40f,   0f),
-                        )
-                        duration     = 300
-                        interpolator = DecelerateInterpolator(2f)
-                    }.start()
-
-                    when (animIdx) {
-                        0 -> {
-                            val bounce = ObjectAnimator.ofPropertyValuesHolder(tv,
-                                PropertyValuesHolder.ofKeyframe("scaleX",
-                                    Keyframe.ofFloat(0f,    1f),
-                                    Keyframe.ofFloat(0.25f, 1.10f),
-                                    Keyframe.ofFloat(0.55f, 0.95f),
-                                    Keyframe.ofFloat(0.78f, 1.04f),
-                                    Keyframe.ofFloat(1f,    1f)),
-                                PropertyValuesHolder.ofKeyframe("scaleY",
-                                    Keyframe.ofFloat(0f,    1f),
-                                    Keyframe.ofFloat(0.25f, 1.10f),
-                                    Keyframe.ofFloat(0.55f, 0.95f),
-                                    Keyframe.ofFloat(0.78f, 1.04f),
-                                    Keyframe.ofFloat(1f,    1f)),
-                            ).apply { duration = 560 }
-                            handler.postDelayed({ try { bounce.start() } catch (_: Exception) {} }, 380)
-                        }
-                        1 -> {
-                            val pulse = ObjectAnimator.ofPropertyValuesHolder(tv,
-                                PropertyValuesHolder.ofFloat("scaleX", 1f, 1.08f, 1f),
-                                PropertyValuesHolder.ofFloat("scaleY", 1f, 1.08f, 1f),
-                            ).apply { duration = 600 }
-                            handler.postDelayed({ try { pulse.start() } catch (_: Exception) {} }, 380)
-                        }
-                        2 -> {
-                            val shake = ObjectAnimator.ofFloat(tv, "translationX",
-                                0f, 14f, -14f, 10f, -10f, 6f, -6f, 0f).apply { duration = 500 }
-                            handler.postDelayed({ try { shake.start() } catch (_: Exception) {} }, 350)
-                        }
-                    }
-                }
+            val fadeOut = ValueAnimator.ofFloat(1f, 0f).apply {
+                duration = 260
+                addUpdateListener { container.alpha = animatedValue as Float }
             }
-
-            // Exit: fade out + scale down (3 s visibility)
-            val exit = AnimatorSet().apply {
-                playTogether(
-                    ObjectAnimator.ofFloat(container, "alpha",  1f, 0f),
-                    ObjectAnimator.ofFloat(container, "scaleX", 1f, 0.88f),
-                    ObjectAnimator.ofFloat(container, "scaleY", 1f, 0.88f),
-                )
-                duration     = 260
-                interpolator = AccelerateInterpolator()
-            }
-            handler.postDelayed({ try { exit.start() } catch (_: Exception) {} }, 3_000)
+            handler.postDelayed({ fadeOut.start() }, 5_000)
             handler.postDelayed({
+                fadeOut.cancel()
                 try { wm.removeView(container) } catch (_: Exception) {}
                 if (activeBannerContainer === container) activeBannerContainer = null
-            }, 3_260)
+            }, 5_260)
 
         } catch (_: Exception) {}
     }

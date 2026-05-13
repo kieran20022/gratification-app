@@ -47,13 +47,14 @@ Keys read by Kotlin:
 | `restricted_apps` | `flutter.restricted_apps` | JSON array of restricted app configs |
 | `monitoring_enabled` | `flutter.monitoring_enabled` | Global on/off switch |
 | `access_granted_<pkg>` | `flutter.access_granted_<pkg>` | Grace period timestamp |
-| `reminder_animation` | `flutter.reminder_animation` | Int index into `ReminderAnimation` enum |
 | `reminder_position` | `flutter.reminder_position` | Int index into `ReminderPosition` enum |
 | `reminder_color_mode` | `flutter.reminder_color_mode` | Int index into `BannerColorMode` enum |
 | `reminder_custom_color` | `flutter.reminder_custom_color` | RGB int (0xRRGGBB, no alpha, fits in int32) |
 | `reminder_message` | `flutter.reminder_message` | Template string with `{app}` and `{time}` |
 
 **Important:** Custom banner colors are stored as 24-bit RGB (`0xRRGGBB`, max `0xFFFFFF = 16,777,215`) to stay within signed int32 range and avoid SharedPreferences overflow issues. Never store a full ARGB Flutter color value as an int.
+
+**Important:** Flutter's `shared_preferences` stores Dart `int` values as `Long` in Android's `SharedPreferences`. Kotlin code must read them with `getLong(key, defaultL).toInt()`, **not** `getInt()`. Calling `getInt()` on a Long-typed key throws `ClassCastException`, which — if uncaught — crashes the accessibility service process. Boolean and String values are unaffected. Timestamps (already Long in Dart) should remain as `getLong()`.
 
 ### Flutter layer (`lib/`)
 
