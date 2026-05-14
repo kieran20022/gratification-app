@@ -28,6 +28,12 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         const val ACTION_PREVIEW_REMINDER = "com.example.gratify.PREVIEW_REMINDER"
         // ~3.15 s at full opacity (350 ms fade-in, 3500 ms hold, 260 ms fade-out, removed at 4260 ms)
         private const val BANNER_DURATION_MS = 4_000L
+
+        // FIX 2: Increased from 2_000L to 5_000L. TikTok (and similar apps) can go
+        // several seconds between TYPE_WINDOW_STATE_CHANGED events during passive video
+        // playback, so 2 s was too aggressive and caused spurious session clears that
+        // re-triggered the delay screen mid-banner.
+        private const val HOME_DEBOUNCE_MS = 5_000L
     }
 
     private val launchableCache = mutableSetOf<String>()
@@ -57,9 +63,9 @@ class AppMonitorAccessibilityService : AccessibilityService() {
     private var bannerExpiresAt: Long = 0L
 
     // Debounce handle for session clears triggered by home-package events. The clear is
-    // deferred by 2 s and cancelled if a non-home window event arrives first, which
-    // absorbs spurious home-package events that some apps (e.g. TikTok) fire transiently
-    // during in-feed navigation without ever actually going to the launcher.
+    // deferred by HOME_DEBOUNCE_MS and cancelled if a non-home window event arrives first,
+    // which absorbs spurious home-package events that some apps (e.g. TikTok) fire
+    // transiently during in-feed navigation without ever actually going to the launcher.
     private var pendingSessionClear: Runnable? = null
 
     private val homePackages: Set<String> by lazy {
@@ -93,20 +99,16 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         if (pkg == packageName) return
 
         if (homePackages.contains(pkg)) {
-            // Debounce the session clear by 2 s. If TikTok (or similar) fires a spurious
-            // home-package event during in-app navigation, a real window event from the
-            // restricted app will arrive within milliseconds and cancel this clear before
-            // it executes. Only a genuine, sustained trip to the home screen (no foreground
-            // app event for 2 s) actually clears the session.
+            // Debounce the session clear by HOME_DEBOUNCE_MS. If TikTok (or similar)
+            // fires a spurious home-package event during in-app navigation, a real window
+            // event from the restricted app will arrive within milliseconds and cancel
+            // this clear before it executes. Only a genuine, sustained trip to the home
+            // screen (no foreground app event for HOME_DEBOUNCE_MS) actually clears
+            // the session.
             if (pendingSessionClear == null) {
-                val clear = Runnable {
-                    cancelAllSessionTimers()
-                    activeRestrictedSessions.clear()
-                    hideOverlayIfActive()
-                    pendingSessionClear = null
-                }
+                val clear = buildSessionClearRunnable()
                 pendingSessionClear = clear
-                handler.postDelayed(clear, 2_000L)
+                handler.postDelayed(clear, HOME_DEBOUNCE_MS)
             }
             return
         }
@@ -152,6 +154,34 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         pendingSessionClear?.let { handler.removeCallbacks(it) }
         cancelAllSessionTimers()
         hideOverlay()
+    }
+
+    // -------------------------------------------------------------------------
+    // FIX 3: Session clear runnable — skip clearing while a banner is displayed
+    // -------------------------------------------------------------------------
+
+    // Builds the Runnable used for the deferred home-event session clear.
+    // If a reminder banner is currently active when the runnable fires, it means the
+    // user is mid-session — clearing now would cause the delay screen to be re-triggered
+    // while the banner is still on screen, producing the "flash" bug. Instead, reschedule
+    // the clear to run shortly after the banner finishes its display window.
+    private fun buildSessionClearRunnable(): Runnable {
+        val runnable = Runnable {
+            val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
+            if (activeBannerContainer != null && bannerAge < BANNER_DURATION_MS) {
+                // Banner is still showing — reschedule to fire after it clears.
+                val retryDelay = BANNER_DURATION_MS - bannerAge + 500L
+                val retry = buildSessionClearRunnable()
+                pendingSessionClear = retry
+                handler.postDelayed(retry, retryDelay)
+                return@Runnable
+            }
+            cancelAllSessionTimers()
+            activeRestrictedSessions.clear()
+            hideOverlayIfActive()
+            pendingSessionClear = null
+        }
+        return runnable
     }
 
     // -------------------------------------------------------------------------
@@ -247,15 +277,31 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
+    // -------------------------------------------------------------------------
+    // FIX 1: Guard triggerDelay against an active banner
+    // -------------------------------------------------------------------------
+
+    // If a reminder banner is currently on screen, launching MainActivity immediately
+    // causes the activity to slide in while the banner is still fading, producing a
+    // visible "flash". Instead, wait for the banner to finish its display window, then
+    // force-dismiss any lingering alpha and launch the delay screen cleanly.
     private fun triggerDelay(pkg: String, app: RestrictedAppInfo, fromSessionLimit: Boolean = false) {
-        startActivity(Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("SHOW_DELAY", true)
-            putExtra("PKG", pkg)
-            putExtra("APP_NAME", app.name)
-            putExtra("DELAY_SECS", app.delaySeconds)
-            putExtra("FROM_SESSION_LIMIT", fromSessionLimit)
-        })
+        val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
+        val wait = if (activeBannerContainer != null && bannerAge < BANNER_DURATION_MS) {
+            BANNER_DURATION_MS - bannerAge + 100L   // small buffer after banner clears
+        } else 0L
+
+        handler.postDelayed({
+            if (activeBannerContainer != null) dismissActiveBanner(force = true)
+            startActivity(Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("SHOW_DELAY", true)
+                putExtra("PKG", pkg)
+                putExtra("APP_NAME", app.name)
+                putExtra("DELAY_SECS", app.delaySeconds)
+                putExtra("FROM_SESSION_LIMIT", fromSessionLimit)
+            })
+        }, wait)
     }
 
     private fun showReminderBanner(appName: String, elapsedSeconds: Int, intervalSeconds: Int = 0) {
