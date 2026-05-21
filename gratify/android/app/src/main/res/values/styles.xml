@@ -15,4 +15,8 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+    <style name="BannerAnimation">
+        <item name="android:windowEnterAnimation">@anim/banner_enter</item>
+        <item name="android:windowExitAnimation">@anim/banner_exit</item>
+    </style>
 </resources>

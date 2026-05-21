@@ -25,7 +25,7 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
     companion object {
         const val ACTION_PREVIEW_REMINDER = "com.example.gratify.PREVIEW_REMINDER"
-        private const val BANNER_DURATION_MS = 3_000L
+        private const val BANNER_DURATION_MS = 4_000L
         private const val HOME_DEBOUNCE_MS = 5_000L
         // How long to ignore window-state events after WE add an overlay window,
         // so we don't react to the event the system fires for our own overlay.
@@ -376,20 +376,23 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         ).apply {
             this.gravity = gravity
             if (posIdx != 1) y = yOffsetPx
-            windowAnimations = 0
+            // Let the window manager animate the window's enter/exit at the
+            // surface level. This avoids per-frame view-alpha changes inside the
+            // overlay, which is what caused the flicker.
+            windowAnimations = R.style.BannerAnimation
         }
 
         container.alpha = 1f
         // Ignore the window-state event addView() will generate for this overlay.
         ignoreEventsUntil = System.currentTimeMillis() + SELF_EVENT_GUARD_MS
         try {
+            // The enter animation plays automatically when the window is added,
+            // and the exit animation plays automatically when it is removed.
             wm.addView(container, params)
             lastBannerAddedAt = System.currentTimeMillis()
             bannerExpiresAt = lastBannerAddedAt + BANNER_DURATION_MS
             activeBannerContainer = container
 
-            // No animations — the banner appears instantly and is removed when
-            // its duration elapses.
             val removeRunnable = Runnable {
                 try { wm.removeView(container) } catch (_: Exception) {}
                 if (activeBannerContainer === container) activeBannerContainer = null
