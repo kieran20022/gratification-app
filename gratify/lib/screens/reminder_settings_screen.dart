@@ -24,6 +24,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   ReminderPosition _position    = ReminderPosition.center;
   BannerColorMode  _colorMode   = BannerColorMode.dark;
   int              _customColor = ReminderSettings.defaultCustomColor;
+  BannerAnimation  _animation   = BannerAnimation.pop;
+  int              _opacity     = ReminderSettings.defaultOpacity;
+  int              _duration    = ReminderSettings.defaultDuration;
   bool             _loaded      = false;
 
   @override
@@ -40,6 +43,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       _position     = s.position;
       _colorMode    = s.colorMode;
       _customColor  = s.customColor;
+      _animation    = s.animation;
+      _opacity      = s.opacity;
+      _duration     = s.duration;
       _loaded       = true;
     });
   }
@@ -49,6 +55,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     position:    _position,
     colorMode:   _colorMode,
     customColor: _customColor,
+    animation:   _animation,
+    opacity:     _opacity,
+    duration:    _duration,
   );
 
   void _save() => _service.save(_current);
@@ -66,6 +75,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       _position     = ReminderPosition.center;
       _colorMode    = BannerColorMode.dark;
       _customColor  = ReminderSettings.defaultCustomColor;
+      _animation    = BannerAnimation.pop;
+      _opacity      = ReminderSettings.defaultOpacity;
+      _duration     = ReminderSettings.defaultDuration;
     });
     _save();
   }
@@ -101,6 +113,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                   position:   _position,
                   colorMode:  _colorMode,
                   customColor: _customColor,
+                  opacity:    _opacity,
                 ),
                 const SizedBox(height: 8),
                 Center(
@@ -116,6 +129,18 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                       foregroundColor: const Color(0xFFE8927C),
                     ),
                   ),
+                ),
+
+                const SizedBox(height: 32),
+                Divider(color: cs.onSurface.withValues(alpha: 0.08)),
+                const SizedBox(height: 24),
+
+                // ── Animation ────────────────────────────────────────────────
+                const _SectionLabel('Animation'),
+                const SizedBox(height: 14),
+                _AnimationSelector(
+                  value:     _animation,
+                  onChanged: (v) { setState(() => _animation = v); _save(); },
                 ),
 
                 const SizedBox(height: 32),
@@ -155,7 +180,87 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
                       : const SizedBox.shrink(),
                 ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 24),
+
+                // ── Opacity ──────────────────────────────────────────────────
+                Row(
+                  children: [
+                    const _SectionLabel('Opacity'),
+                    const Spacer(),
+                    Text(
+                      '$_opacity%',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF9896B0),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor:   const Color(0xFFE8927C),
+                    inactiveTrackColor: const Color(0xFFE8927C).withValues(alpha: 0.18),
+                    thumbColor:         const Color(0xFFE8927C),
+                    overlayColor:       const Color(0xFFE8927C).withValues(alpha: 0.12),
+                    trackHeight:        3,
+                    thumbShape:         const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    overlayShape:       const RoundSliderOverlayShape(overlayRadius: 16),
+                  ),
+                  child: Slider(
+                    value:    _opacity.toDouble(),
+                    min:      10,
+                    max:      100,
+                    divisions: 18,
+                    onChanged: (v) {
+                      setState(() => _opacity = v.round());
+                    },
+                    onChangeEnd: (_) => _save(),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Duration ─────────────────────────────────────────────────
+                Row(
+                  children: [
+                    const _SectionLabel('Display Time'),
+                    const Spacer(),
+                    Text(
+                      '$_duration s',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF9896B0),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor:   const Color(0xFFE8927C),
+                    inactiveTrackColor: const Color(0xFFE8927C).withValues(alpha: 0.18),
+                    thumbColor:         const Color(0xFFE8927C),
+                    overlayColor:       const Color(0xFFE8927C).withValues(alpha: 0.12),
+                    trackHeight:        3,
+                    thumbShape:         const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    overlayShape:       const RoundSliderOverlayShape(overlayRadius: 16),
+                  ),
+                  child: Slider(
+                    value:     _duration.toDouble(),
+                    min:       1,
+                    max:       5,
+                    divisions: 4,
+                    onChanged: (v) {
+                      setState(() => _duration = v.round());
+                    },
+                    onChangeEnd: (_) => _save(),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
                 Divider(color: cs.onSurface.withValues(alpha: 0.08)),
                 const SizedBox(height: 24),
 
@@ -232,12 +337,14 @@ class _BannerPreviewCard extends StatelessWidget {
   final ReminderPosition position;
   final BannerColorMode  colorMode;
   final int              customColor;
+  final int              opacity;
 
   const _BannerPreviewCard({
     required this.message,
     required this.position,
     required this.colorMode,
     required this.customColor,
+    required this.opacity,
   });
 
   @override
@@ -263,6 +370,7 @@ class _BannerPreviewCard extends StatelessWidget {
               message:   message,
               bgColor:   _bannerBgColor(colorMode, customColor),
               textColor: _bannerTextColor(colorMode, customColor),
+              opacity:   opacity / 100.0,
             ),
           ),
         ],
@@ -275,11 +383,13 @@ class _BannerPill extends StatelessWidget {
   final String message;
   final Color  bgColor;
   final Color  textColor;
+  final double opacity;
 
   const _BannerPill({
     required this.message,
     required this.bgColor,
     required this.textColor,
+    required this.opacity,
   });
 
   @override
@@ -287,7 +397,7 @@ class _BannerPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       decoration: BoxDecoration(
-        color: bgColor.withValues(alpha: 0.92),
+        color: bgColor.withValues(alpha: opacity),
         borderRadius: BorderRadius.circular(100),
         boxShadow: [
           BoxShadow(
@@ -299,6 +409,7 @@ class _BannerPill extends StatelessWidget {
       ),
       child: Text(
         message,
+        textAlign: TextAlign.center,
         style: TextStyle(
           color: textColor,
           fontSize: 13,
@@ -310,6 +421,64 @@ class _BannerPill extends StatelessWidget {
 }
 
 // ── Selectors ─────────────────────────────────────────────────────────────────
+
+class _AnimationSelector extends StatelessWidget {
+  final BannerAnimation value;
+  final ValueChanged<BannerAnimation> onChanged;
+  const _AnimationSelector({required this.value, required this.onChanged});
+
+  static const _options = [
+    (BannerAnimation.pop,   Icons.open_in_full_rounded,   'Pop'),
+    (BannerAnimation.fade,  Icons.blur_on_rounded,         'Fade'),
+    (BannerAnimation.slide, Icons.swap_vert_rounded,       'Slide'),
+    (BannerAnimation.none,  Icons.flash_on_rounded,        'None'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: _options.map((opt) {
+        final (anim, icon, label) = opt;
+        final selected = value == anim;
+        return Expanded(
+          child: GestureDetector(
+            onTap: () => onChanged(anim),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFFE8927C).withValues(alpha: 0.15)
+                    : cs.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected ? const Color(0xFFE8927C) : cs.onSurface.withValues(alpha: 0.1),
+                  width: selected ? 1.5 : 1,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 22,
+                      color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0)),
+                  const SizedBox(height: 5),
+                  Text(label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? const Color(0xFFE8927C) : const Color(0xFF9896B0),
+                      )),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
 
 class _PositionSelector extends StatelessWidget {
   final ReminderPosition value;

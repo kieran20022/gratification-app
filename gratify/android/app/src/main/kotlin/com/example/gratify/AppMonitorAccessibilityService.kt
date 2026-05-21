@@ -166,10 +166,10 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
     private fun buildSessionClearRunnable(): Runnable {
         val runnable = Runnable {
-            val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
-            if (activeBannerContainer != null && bannerAge < BANNER_DURATION_MS) {
+            val now = System.currentTimeMillis()
+            if (activeBannerContainer != null && now < bannerExpiresAt) {
                 // Banner is still showing — reschedule to fire after it clears.
-                val retryDelay = BANNER_DURATION_MS - bannerAge + 500L
+                val retryDelay = bannerExpiresAt - now + 500L
                 val retry = buildSessionClearRunnable()
                 pendingSessionClear = retry
                 handler.postDelayed(retry, retryDelay)
@@ -268,9 +268,9 @@ class AppMonitorAccessibilityService : AccessibilityService() {
     private fun triggerDelay(pkg: String, app: RestrictedAppInfo, fromSessionLimit: Boolean = false) {
         pendingTriggerRunnables.remove(pkg)?.let { handler.removeCallbacks(it) }
 
-        val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
-        val wait = if (activeBannerContainer != null && bannerAge < BANNER_DURATION_MS) {
-            BANNER_DURATION_MS - bannerAge + 100L  
+        val now2  = System.currentTimeMillis()
+        val wait  = if (activeBannerContainer != null && now2 < bannerExpiresAt) {
+            bannerExpiresAt - now2 + 100L
         } else 0L
 
         val runnable = Runnable {
@@ -314,13 +314,17 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
         val paddingPx = (50 * resources.displayMetrics.density).toInt()
 
+        val animIdx      = flutterPrefs.getLong("flutter.reminder_animation",  0L).toInt()
+        val durationMs   = flutterPrefs.getLong("flutter.reminder_duration",   4L).coerceIn(1L, 5L) * 1_000L
         val colorModeIdx = flutterPrefs.getLong("flutter.reminder_color_mode", 0L).toInt()
         val customRgb    = flutterPrefs.getLong("flutter.reminder_custom_color", 0x7B6FD4L).toInt()
+        val opacityPct   = flutterPrefs.getLong("flutter.reminder_opacity", 92L).toInt()
+        val alpha        = (opacityPct * 255 / 100).coerceIn(0, 255)
         val bannerBgColor: Int
         val bannerTextColor: Int
         when (colorModeIdx) {
             1 -> {
-                bannerBgColor   = Color.argb(235, 248, 247, 255)
+                bannerBgColor   = Color.argb(alpha, 248, 247, 255)
                 bannerTextColor = Color.rgb(28, 26, 46)
             }
             2 -> {
@@ -328,11 +332,11 @@ class AppMonitorAccessibilityService : AccessibilityService() {
                 val g = (customRgb shr 8)  and 0xFF
                 val b = customRgb          and 0xFF
                 val luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
-                bannerBgColor   = Color.argb(235, r, g, b)
+                bannerBgColor   = Color.argb(alpha, r, g, b)
                 bannerTextColor = if (luminance > 0.45) Color.rgb(28, 26, 46) else Color.WHITE
             }
             else -> {
-                bannerBgColor   = Color.argb(235, 28, 26, 46)
+                bannerBgColor   = Color.argb(alpha, 28, 26, 46)
                 bannerTextColor = Color.WHITE
             }
         }
@@ -348,6 +352,7 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             setTextColor(bannerTextColor)
             textSize = 14f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
             setPadding(64, 32, 64, 32)
             background = bg
             maxWidth = screenWidth - 2 * paddingPx - 128
@@ -379,7 +384,12 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             // Let the window manager animate the window's enter/exit at the
             // surface level. This avoids per-frame view-alpha changes inside the
             // overlay, which is what caused the flicker.
-            windowAnimations = R.style.BannerAnimation
+            windowAnimations = when (animIdx) {
+                1    -> R.style.BannerAnimationFade
+                2    -> R.style.BannerAnimationSlide
+                3    -> 0
+                else -> R.style.BannerAnimation
+            }
         }
 
         container.alpha = 1f
@@ -390,7 +400,7 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             // and the exit animation plays automatically when it is removed.
             wm.addView(container, params)
             lastBannerAddedAt = System.currentTimeMillis()
-            bannerExpiresAt = lastBannerAddedAt + BANNER_DURATION_MS
+            bannerExpiresAt = lastBannerAddedAt + durationMs
             activeBannerContainer = container
 
             val removeRunnable = Runnable {
@@ -401,7 +411,7 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             }
             bannerFadeRunnable = null
             bannerRemoveRunnable = removeRunnable
-            handler.postDelayed(removeRunnable, BANNER_DURATION_MS)
+            handler.postDelayed(removeRunnable, durationMs)
 
         } catch (_: Exception) {
             ignoreEventsUntil = 0L

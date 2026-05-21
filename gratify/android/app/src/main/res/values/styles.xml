@@ -19,4 +19,12 @@
         <item name="android:windowEnterAnimation">@anim/banner_enter</item>
         <item name="android:windowExitAnimation">@anim/banner_exit</item>
     </style>
+    <style name="BannerAnimationFade">
+        <item name="android:windowEnterAnimation">@anim/banner_fade_enter</item>
+        <item name="android:windowExitAnimation">@anim/banner_fade_exit</item>
+    </style>
+    <style name="BannerAnimationSlide">
+        <item name="android:windowEnterAnimation">@anim/banner_slide_enter</item>
+        <item name="android:windowExitAnimation">@anim/banner_slide_exit</item>
+    </style>
 </resources>

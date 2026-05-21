@@ -53,6 +53,8 @@ Keys read by Kotlin:
 | `reminder_animation` | `flutter.reminder_animation` | Int index selecting the banner enter/exit animation (see Banner animation) |
 | `reminder_color_mode` | `flutter.reminder_color_mode` | Int index into `BannerColorMode` enum |
 | `reminder_custom_color` | `flutter.reminder_custom_color` | RGB int (0xRRGGBB, no alpha, fits in int32) |
+| `reminder_opacity` | `flutter.reminder_opacity` | Int 0–100 (percent); default 92. Controls banner background alpha. |
+| `reminder_duration` | `flutter.reminder_duration` | Int 1–5 (seconds); default 4. How long the banner stays on screen. |
 | `reminder_message` | `flutter.reminder_message` | Template string with `{app}` and `{time}` |
 
 **Important:** Custom banner colors are stored as 24-bit RGB (`0xRRGGBB`, max `0xFFFFFF = 16,777,215`) to stay within signed int32 range and avoid SharedPreferences overflow issues. Never store a full ARGB Flutter color value as an int.
