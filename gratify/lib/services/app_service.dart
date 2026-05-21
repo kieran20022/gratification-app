@@ -15,9 +15,9 @@ class AppService {
   static Future<void> requestOverlayPermission() =>
       _ch.invokeMethod('requestOverlayPermission');
 
-  static Future<List<Map<String, String>>> getInstalledApps() async {
+  static Future<List<Map<String, dynamic>>> getInstalledApps() async {
     final raw = await _ch.invokeMethod<List>('getInstalledApps');
-    return raw?.map((e) => Map<String, String>.from(e as Map)).toList() ?? [];
+    return raw?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
   }
 
   static Future<void> startMonitoring() => _ch.invokeMethod('startMonitoring');

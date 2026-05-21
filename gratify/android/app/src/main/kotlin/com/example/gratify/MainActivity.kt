@@ -1,11 +1,14 @@
 ﻿package com.example.gratify
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
+import android.os.Process
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import io.flutter.embedding.android.FlutterActivity
@@ -139,12 +142,40 @@ class MainActivity : FlutterActivity() {
             .apply()
     }
 
-    private fun getInstalledApps(): List<Map<String, String>> {
+    private fun getInstalledApps(): List<Map<String, Any>> {
+        val screenTimes = getScreenTimeMap()
         val pm = packageManager
         return pm.getInstalledApplications(0)
             .filter { pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != packageName }
-            .map { mapOf("name" to pm.getApplicationLabel(it).toString(), "packageName" to it.packageName) }
-            .sortedBy { it["name"] }
+            .map {
+                mapOf(
+                    "name"       to pm.getApplicationLabel(it).toString(),
+                    "packageName" to it.packageName,
+                    "screenTime" to (screenTimes[it.packageName] ?: 0L),
+                )
+            }
+            .sortedWith(
+                compareByDescending<Map<String, Any>> { it["screenTime"] as Long }
+                    .thenBy { it["name"] as String }
+            )
+    }
+
+    private fun getScreenTimeMap(): Map<String, Long> {
+        return try {
+            val appOps = getSystemService(APP_OPS_SERVICE) as AppOpsManager
+            val mode   = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+            if (mode != AppOpsManager.MODE_ALLOWED) return emptyMap()
+
+            val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
+            val cal = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val stats = usm.queryAndAggregateUsageStats(cal.timeInMillis, System.currentTimeMillis())
+            stats.mapValues { it.value.totalTimeInForeground / 1_000L }
+        } catch (_: Exception) { emptyMap() }
     }
 
     private fun getAppIconBytes(pkg: String): ByteArray? {

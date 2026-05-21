@@ -185,8 +185,16 @@ class _AddAppScreenState extends State<AddAppScreen> {
       appBar: AppBar(
         title: Text(widget.existing == null ? 'Add App' : 'Edit App'),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _save,
+        backgroundColor: const Color(0xFF7B6FD4),
+        foregroundColor: Colors.white,
+        elevation: 3,
+        tooltip: widget.existing == null ? 'Add App' : 'Save Changes',
+        child: const Icon(Icons.check_rounded),
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
         children: [
           // Tappable card that opens the app picker.
           // The border animates in with the app's accent color once selected.
@@ -696,24 +704,6 @@ class _AddAppScreenState extends State<AddAppScreen> {
             }).toList(),
           ),
 
-          const SizedBox(height: 48),
-
-          ElevatedButton(
-            onPressed: _save,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF7B6FD4),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-            ),
-            child: Text(
-              widget.existing == null ? 'Add App' : 'Save Changes',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-          ),
         ],
       ),
     );

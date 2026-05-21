@@ -100,10 +100,18 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Usage Reminder')),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () { _save(); Navigator.pop(context); },
+        backgroundColor: const Color(0xFF7B6FD4),
+        foregroundColor: Colors.white,
+        elevation: 3,
+        tooltip: 'Save',
+        child: const Icon(Icons.check_rounded),
+      ),
       body: !_loaded
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
               children: [
                 // ── Preview ─────────────────────────────────────────────────
                 const _SectionLabel('Preview'),

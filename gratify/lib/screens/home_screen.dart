@@ -93,6 +93,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _addApp() async {
+    if (!_permissionsGranted) {
+      bool permissionsCompleted = false;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PermissionsScreen(
+            onComplete: () {
+              permissionsCompleted = true;
+              Navigator.pop(context);
+            },
+          ),
+        ),
+      );
+      await _refreshPermissions();
+      if (!permissionsCompleted || !mounted) return;
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(
