@@ -1,7 +1,6 @@
 package com.example.gratify
 
 import android.accessibilityservice.AccessibilityService
-import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -26,13 +25,11 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
     companion object {
         const val ACTION_PREVIEW_REMINDER = "com.example.gratify.PREVIEW_REMINDER"
-        // ~3.15 s at full opacity (350 ms fade-in, 3500 ms hold, 260 ms fade-out, removed at 4260 ms)
-        private const val BANNER_DURATION_MS = 4_000L
-
-        // Increased from 2_000L — apps like TikTok can go several seconds between
-        // TYPE_WINDOW_STATE_CHANGED events during passive video playback, so 2 s was
-        // too aggressive and caused spurious session clears mid-banner.
+        private const val BANNER_DURATION_MS = 3_000L
         private const val HOME_DEBOUNCE_MS = 5_000L
+        // How long to ignore window-state events after WE add an overlay window,
+        // so we don't react to the event the system fires for our own overlay.
+        private const val SELF_EVENT_GUARD_MS = 800L
     }
 
     private val launchableCache = mutableSetOf<String>()
@@ -45,46 +42,26 @@ class AppMonitorAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val pendingReminderRunnables = mutableMapOf<String, Runnable>()
     private val pendingLimitRunnables = mutableMapOf<String, Runnable>()
-
-    // NEW CAUSE A FIX: track each deferred triggerDelay runnable per package so that
-    // cancelAllSessionTimers and the grace-period restart path can cancel them before
-    // they fire. Without this, a stale deferred startActivity() could survive a session
-    // clear and fire into a fresh session, launching the delay screen over an active banner.
     private val pendingTriggerRunnables = mutableMapOf<String, Runnable>()
 
     private var currentOverlayPackage: String? = null
     private var overlayView: View? = null
     private var activeBannerContainer: View? = null
-
-    // Stored runnables for the active banner's fade-out and removal so they can be
-    // cancelled by dismissActiveBanner instead of running on a removed view.
     private var bannerFadeRunnable: Runnable? = null
     private var bannerRemoveRunnable: Runnable? = null
-
-    // lastBannerAddedAt / bannerExpiresAt are set only after a successful wm.addView so
-    // that a failed add never silently blocks the next attempt. bannerExpiresAt is also
-    // used as a minimum interval guard: no new banner fires before it has passed.
     private var lastBannerAddedAt: Long = 0L
     private var bannerExpiresAt: Long = 0L
-
-    // NEW CAUSE C FIX: set to true immediately before wm.addView() for the banner and
-    // reset to false on the next looper message. On many devices/ROMs, wm.addView() for
-    // a TYPE_ACCESSIBILITY_OVERLAY window fires TYPE_WINDOW_STATE_CHANGED with the
-    // foreground app's package — not the service package — so the `pkg == packageName`
-    // guard in onAccessibilityEvent doesn't catch it. That event then hits updateOverlay
-    // and can toggle the grayscale overlay on/off at the exact moment the banner appears,
-    // producing a compound visual flash. Suppressing the event for exactly one looper
-    // cycle fixes this without needing to know the foreground package in advance.
-    // This works because the queued accessibility event and handler.post() both go
-    // through the same main-thread looper: the event was enqueued first (by wm.addView),
-    // so it fires while the flag is still true; the post fires right after and resets it.
-    private var bannerJustAdded = false
-
-    // Debounce handle for session clears triggered by home-package events. The clear is
-    // deferred by HOME_DEBOUNCE_MS and cancelled if a non-home window event arrives first,
-    // which absorbs spurious home-package events that some apps (e.g. TikTok) fire
-    // transiently during in-feed navigation without ever actually going to the launcher.
     private var pendingSessionClear: Runnable? = null
+
+    // The package the service currently believes is in the foreground. Launch
+    // handling only runs when this CHANGES, so repeated window-state events from
+    // in-app navigation (dialogs, fragments, sub-activities) are ignored.
+    private var lastForegroundPackage: String? = null
+
+    // Timestamp until which window-state events are ignored. Set whenever we add
+    // one of our own overlay windows, because addView() makes the system fire a
+    // TYPE_WINDOW_STATE_CHANGED that we must not react to.
+    private var ignoreEventsUntil: Long = 0L
 
     private val homePackages: Set<String> by lazy {
         val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
@@ -113,21 +90,26 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+
+        // Ignore the window-state event the system fires when we add our own
+        // banner/grayscale overlay. A time window is used instead of a one-shot
+        // flag because that self-generated event can arrive several frames later.
+        if (System.currentTimeMillis() < ignoreEventsUntil) return
+
         val pkg = event.packageName?.toString() ?: return
         if (pkg.isEmpty()) return
-        if (pkg == packageName) return
 
-        // NEW CAUSE C FIX: suppress the TYPE_WINDOW_STATE_CHANGED event that wm.addView()
-        // fires for the banner window — see bannerJustAdded field comment for full details.
-        if (bannerJustAdded) return
+        // Our own UI (e.g. the delay screen) coming to the foreground means the
+        // next return to a monitored app is a genuine re-entry, so forget the
+        // last foreground package.
+        if (pkg == packageName) {
+            lastForegroundPackage = null
+            return
+        }
 
         if (homePackages.contains(pkg)) {
-            // Debounce the session clear by HOME_DEBOUNCE_MS. If TikTok (or similar)
-            // fires a spurious home-package event during in-app navigation, a real window
-            // event from the restricted app will arrive within milliseconds and cancel
-            // this clear before it executes. Only a genuine, sustained trip to the home
-            // screen (no foreground app event for HOME_DEBOUNCE_MS) actually clears
-            // the session.
+            // Going home is a real foreground change; re-evaluate on return.
+            lastForegroundPackage = null
             if (pendingSessionClear == null) {
                 val clear = buildSessionClearRunnable()
                 pendingSessionClear = clear
@@ -136,8 +118,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Any non-home foreground event means an app is active — cancel any pending
-        // session clear so a spurious home event can't reset a live session.
         pendingSessionClear?.let { handler.removeCallbacks(it); pendingSessionClear = null }
 
         if (!isLaunchableApp(pkg)) return
@@ -148,6 +128,12 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         val app = findRestrictedApp(pkg, flutterPrefs)
         updateOverlay(pkg, app)
 
+        // Only the FIRST event for a freshly-foregrounded app counts as a launch.
+        // Subsequent events for the same package are in-app navigation and must
+        // not re-trigger the delay screen.
+        if (pkg == lastForegroundPackage) return
+        lastForegroundPackage = pkg
+
         if (app == null) return
 
         if (activeRestrictedSessions.contains(pkg)) return
@@ -155,10 +141,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         val graceMs = if (app.graceMinutes > 0) app.graceMinutes * 60_000L else 5_000L
         val grantedAt = flutterPrefs.getLong("flutter.access_granted_$pkg", 0L)
         if (grantedAt > 0L && System.currentTimeMillis() - grantedAt < graceMs) {
-            // User completed the delay — clear any pending flag and start the session.
-            // NEW CAUSE A FIX: cancel any pending triggerDelay runnable for this package.
-            // Without this, a previously deferred startActivity() would fire after the
-            // session restarts and launch the delay screen over an active banner.
             pendingTriggerRunnables.remove(pkg)?.let { handler.removeCallbacks(it) }
             pendingDelayPackages.remove(pkg)
             activeRestrictedSessions.add(pkg)
@@ -166,7 +148,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Delay screen is already showing for this package — don't re-trigger.
         if (pendingDelayPackages.contains(pkg)) return
 
         pendingDelayPackages.add(pkg)
@@ -183,15 +164,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         hideOverlay()
     }
 
-    // -------------------------------------------------------------------------
-    // Session clear runnable — skip clearing while a banner is displayed
-    // -------------------------------------------------------------------------
-
-    // Builds the Runnable used for the deferred home-event session clear.
-    // If a reminder banner is currently active when the runnable fires, it means the
-    // user is mid-session — clearing now would cause the delay screen to be re-triggered
-    // while the banner is still on screen. Instead, reschedule the clear to run shortly
-    // after the banner finishes its display window.
     private fun buildSessionClearRunnable(): Runnable {
         val runnable = Runnable {
             val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
@@ -205,22 +177,15 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             }
             cancelAllSessionTimers()
             activeRestrictedSessions.clear()
+            lastForegroundPackage = null
             hideOverlayIfActive()
             pendingSessionClear = null
         }
         return runnable
     }
 
-    // -------------------------------------------------------------------------
-    // Session timers
-    // -------------------------------------------------------------------------
-
     private fun startSessionTimer(pkg: String, app: RestrictedAppInfo) {
         if (sessionStartTimes.containsKey(pkg)) return
-        // Capture now once so both timers compute delays from the same reference.
-        // Without this, scheduleUsageLimit would call currentTimeMillis() a few ms
-        // later than scheduleReminder, giving the limit a slightly shorter delay and
-        // causing it to fire before the reminder when both intervals are equal.
         val now = System.currentTimeMillis()
         sessionStartTimes[pkg] = now
         if (app.reminderIntervalSeconds > 0) scheduleReminder(pkg, app, 1, scheduledAt = now)
@@ -233,8 +198,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         count: Int,
         scheduledAt: Long = System.currentTimeMillis(),
     ) {
-        // Skip reminders that would fire at or after the usage limit — the delay screen
-        // already communicates the session end; showing a banner simultaneously is confusing.
         if (app.usageLimitSeconds > 0 &&
                 count.toLong() * app.reminderIntervalSeconds >= app.usageLimitSeconds) return
 
@@ -268,8 +231,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
             pendingReminderRunnables.remove(pkg)?.let { handler.removeCallbacks(it) }
             pendingLimitRunnables.remove(pkg)
             pendingDelayPackages.add(pkg)
-            // If a reminder banner fired recently, let it finish its 3-second minimum
-            // display before force-dismissing it and showing the delay screen.
             val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
             val wait = if (activeBannerContainer != null && bannerAge < 3_000L) 3_000L - bannerAge else 0L
             handler.postDelayed({
@@ -284,9 +245,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
     private fun cancelAllSessionTimers() {
         pendingReminderRunnables.values.forEach { handler.removeCallbacks(it) }
         pendingLimitRunnables.values.forEach { handler.removeCallbacks(it) }
-        // NEW CAUSE A FIX: cancel any deferred triggerDelay runnables. Previously these
-        // were untracked, so a stale deferred startActivity() could survive a session
-        // clear and fire into a fresh session, launching the delay screen mid-banner.
         pendingTriggerRunnables.values.forEach { handler.removeCallbacks(it) }
         pendingReminderRunnables.clear()
         pendingLimitRunnables.clear()
@@ -295,8 +253,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         pendingDelayPackages.clear()
     }
 
-    // Removes the active banner. Non-forced calls are ignored if the banner has been
-    // visible for less than 3 seconds, ensuring a minimum readable display time.
     private fun dismissActiveBanner(force: Boolean = false) {
         val container = activeBannerContainer ?: return
         if (!force && System.currentTimeMillis() - lastBannerAddedAt < 3_000L) return
@@ -309,32 +265,16 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {}
     }
 
-    // -------------------------------------------------------------------------
-    // Delay trigger
-    // -------------------------------------------------------------------------
-
-    // If a reminder banner is currently on screen, launching MainActivity immediately
-    // causes the activity to slide in while the banner is still fading, producing a
-    // visible flash. Instead, wait for the banner to finish its display window, then
-    // force-dismiss any lingering alpha and launch the delay screen cleanly.
-    //
-    // NEW CAUSE A FIX: the deferred runnable is stored in pendingTriggerRunnables so it
-    // can be cancelled by cancelAllSessionTimers or by a grace-period restart. It also
-    // guards against stale state by re-checking pendingDelayPackages before firing.
     private fun triggerDelay(pkg: String, app: RestrictedAppInfo, fromSessionLimit: Boolean = false) {
-        // Cancel any previously posted (but not yet fired) trigger for this package.
         pendingTriggerRunnables.remove(pkg)?.let { handler.removeCallbacks(it) }
 
         val bannerAge = System.currentTimeMillis() - lastBannerAddedAt
         val wait = if (activeBannerContainer != null && bannerAge < BANNER_DURATION_MS) {
-            BANNER_DURATION_MS - bannerAge + 100L   // small buffer after banner clears
+            BANNER_DURATION_MS - bannerAge + 100L  
         } else 0L
 
         val runnable = Runnable {
             pendingTriggerRunnables.remove(pkg)
-            // If the session was restarted (grace period) or cancelled while waiting
-            // for the banner, the package is no longer in pendingDelayPackages — abort
-            // to avoid launching a stale delay screen over a live session.
             if (!pendingDelayPackages.contains(pkg)) return@Runnable
             if (activeBannerContainer != null) dismissActiveBanner(force = true)
             startActivity(Intent(this, MainActivity::class.java).apply {
@@ -352,10 +292,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
 
     private fun showReminderBanner(appName: String, elapsedSeconds: Int, intervalSeconds: Int = 0) {
         val now = System.currentTimeMillis()
-        // Block until the current banner has expired AND enough time has elapsed since
-        // the last banner started (based on the reminder interval). This prevents a
-        // session-restart from scheduling a new count=1 timer that fires just after the
-        // previous banner expires, producing a double-flash.
         val minNextAt = if (intervalSeconds > 0) lastBannerAddedAt + intervalSeconds * 1_000L
                         else bannerExpiresAt
         if (now < maxOf(bannerExpiresAt, minNextAt)) return
@@ -363,8 +299,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         val wm = getSystemService(WindowManager::class.java) ?: return
 
         val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        // Flutter's shared_preferences stores Dart ints as Long on Android.
-        // getInt() on a Long-typed key throws ClassCastException; use getLong().toInt().
         val posIdx      = flutterPrefs.getLong("flutter.reminder_position", 1L).toInt()
         val msgTemplate = flutterPrefs.getString("flutter.reminder_message", null)
                         ?: "You've been in {app} for {time}"
@@ -442,71 +376,34 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         ).apply {
             this.gravity = gravity
             if (posIdx != 1) y = yOffsetPx
-            // NEW CAUSE B FIX: disable system window enter/exit animations. Without this,
-            // Android applies its own fade/scale animation to every new overlay window at
-            // the same time as the custom ValueAnimator. The two alphas multiply:
-            //   screenAlpha = systemWindowAlpha × container.alpha
-            // At time zero both start near 0 — the banner briefly appears nearly
-            // transparent, snaps to visible when the system animation finishes, then the
-            // custom animator is already mid-way. This produces a flash on every app,
-            // every time, regardless of session state. Setting windowAnimations = 0 hands
-            // full control to the ValueAnimator and eliminates this class of flash entirely.
             windowAnimations = 0
         }
 
-        // ValueAnimator drives animation via Choreographer and never calls
-        // isAttachedToWindow(), so it works immediately after wm.addView() without
-        // needing post{} or attachment guards that ObjectAnimator/AnimatorSet require.
-        container.alpha = 0f
-
-        // NEW CAUSE C FIX: raise the bannerJustAdded flag before addView so the
-        // TYPE_WINDOW_STATE_CHANGED event it fires (with the foreground app's package on
-        // many ROMs) is suppressed for exactly one looper cycle. Reset via handler.post
-        // (zero delay), which is enqueued AFTER the accessibility event in the same looper,
-        // so the flag is true when the event fires and false on the very next message.
-        bannerJustAdded = true
+        container.alpha = 1f
+        // Ignore the window-state event addView() will generate for this overlay.
+        ignoreEventsUntil = System.currentTimeMillis() + SELF_EVENT_GUARD_MS
         try {
             wm.addView(container, params)
-            handler.post { bannerJustAdded = false }
-            // Set timestamps only after a successful addView. If addView throws, we
-            // leave bannerExpiresAt unchanged so the next call is not silently blocked.
             lastBannerAddedAt = System.currentTimeMillis()
             bannerExpiresAt = lastBannerAddedAt + BANNER_DURATION_MS
             activeBannerContainer = container
 
-            ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 350
-                addUpdateListener { container.alpha = animatedValue as Float }
-            }.start()
-
-            val fadeOut = ValueAnimator.ofFloat(1f, 0f).apply {
-                duration = 260
-                addUpdateListener { container.alpha = animatedValue as Float }
-            }
-
-            val fadeRunnable = Runnable { fadeOut.start() }
+            // No animations — the banner appears instantly and is removed when
+            // its duration elapses.
             val removeRunnable = Runnable {
-                fadeOut.cancel()
                 try { wm.removeView(container) } catch (_: Exception) {}
                 if (activeBannerContainer === container) activeBannerContainer = null
                 bannerFadeRunnable = null
                 bannerRemoveRunnable = null
             }
-            bannerFadeRunnable = fadeRunnable
+            bannerFadeRunnable = null
             bannerRemoveRunnable = removeRunnable
-            handler.postDelayed(fadeRunnable, BANNER_DURATION_MS - 500L)
-            handler.postDelayed(removeRunnable, BANNER_DURATION_MS + 260L)
+            handler.postDelayed(removeRunnable, BANNER_DURATION_MS)
 
         } catch (_: Exception) {
-            // addView failed — reset the flag immediately since no event will be queued.
-            bannerJustAdded = false
+            ignoreEventsUntil = 0L
         }
     }
-
-
-    // -------------------------------------------------------------------------
-    // Grayscale overlay
-    // -------------------------------------------------------------------------
 
     private fun updateOverlay(pkg: String, app: RestrictedAppInfo?) {
         val shouldShow = app != null
@@ -547,10 +444,14 @@ class AppMonitorAccessibilityService : AccessibilityService() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         )
+        // Ignore the window-state event addView() will generate for this overlay.
+        ignoreEventsUntil = System.currentTimeMillis() + SELF_EVENT_GUARD_MS
         try {
             wm.addView(view, params)
             overlayView = view
-        } catch (_: Exception) { }
+        } catch (_: Exception) {
+            ignoreEventsUntil = 0L
+        }
     }
 
     private fun hideOverlay() {
@@ -576,10 +477,6 @@ class AppMonitorAccessibilityService : AccessibilityService() {
         val cal = Calendar.getInstance()
         return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
     }
-
-    // -------------------------------------------------------------------------
-    // App lookup helpers
-    // -------------------------------------------------------------------------
 
     private fun isLaunchableApp(pkg: String): Boolean {
         if (!cacheFilled) fillCache()
