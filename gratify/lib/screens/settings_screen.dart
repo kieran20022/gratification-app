@@ -568,29 +568,33 @@ class _PreviewPageState extends State<_PreviewPage>
                   ),
                 const Spacer(flex: 2),
                 ElevatedButton(
-                  onPressed: _canOpen ? () => Navigator.pop(context) : null,
+                  onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF7B6FD4),
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFFCBC8E8),
-                    disabledForegroundColor: const Color(0xFF9896B0),
                     minimumSize: const Size(double.infinity, 56),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
                   ),
-                  child: Text(
-                    _canOpen ? 'Open App' : 'Please wait...',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
+                  child: const Text(
+                    'Never mind, go back',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    'Never mind, go back',
-                    style: TextStyle(color: Color(0xFF9896B0), fontSize: 14),
+                AnimatedOpacity(
+                  opacity: _canOpen ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 400),
+                  child: IgnorePointer(
+                    ignoring: !_canOpen,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        'Open App',
+                        style: TextStyle(color: Color(0xFF9896B0), fontSize: 14),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
