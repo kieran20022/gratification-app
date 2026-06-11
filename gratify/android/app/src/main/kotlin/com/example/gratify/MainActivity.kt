@@ -67,7 +67,7 @@ class MainActivity : FlutterActivity() {
                     getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
                         .edit()
                         .putLong("flutter.access_granted_$pkg", System.currentTimeMillis())
-                        .apply()
+                        .commit()
                     result.success(null)
                 }
                 "previewReminder" -> {
